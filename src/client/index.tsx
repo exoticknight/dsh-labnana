@@ -444,7 +444,7 @@ function LabnanaCard(props: CardProps) {
         <span className="dshln-cardHeadText">
           <span className="dshln-cardTitle">
             {t("title")}
-            <span className="dshln-version" style={{ marginLeft: 8 }}>{t("version")}0.2.0</span>
+            <span className="dshln-version" style={{ marginLeft: 8 }}>{t("version")}0.3.0</span>
           </span>
           <span className="dshln-desc">{t("description")}</span>
         </span>

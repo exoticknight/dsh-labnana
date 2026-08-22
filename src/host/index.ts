@@ -23,7 +23,7 @@ const EP_ESTIMATE = "/openapi/v1/images/generation/estimate-credits";
 const NS = settingsNamespace("labnana");
 const BRIDGE_PREFIX = "/api/dsh-labnana-settings";
 const IMAGE_PREFIX = "/api/dsh-labnana-images";
-const PLUGIN_VERSION = "0.2.0";
+const PLUGIN_VERSION = "0.3.0";
 
 // 已生成图片索引：filename -> 绝对路径（供图片服务端点在进程内快速定位生成图）
 const SAVED_IMAGES = new Map<string, string>();
