@@ -1,7 +1,12 @@
 # dsh-labnana
 
+<p align="center">
+  <img src="images/logo.png" width="120" alt="dsh-labnana logo" />
+</p>
+
 [![License](https://img.shields.io/github/license/exoticknight/dsh-labnana)](LICENSE)
 [![dsh plugin](https://img.shields.io/badge/dsh%20plugin-v0.2.0-4b32c3)](https://github.com/exoticknight/dsh-labnana)
+[![CI](https://img.shields.io/github/actions/workflow/status/exoticknight/dsh-labnana/ci.yml?branch=main)](https://github.com/exoticknight/dsh-labnana/actions)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://github.com/exoticknight/dsh-labnana)
 [![status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/exoticknight/dsh-labnana)
 
