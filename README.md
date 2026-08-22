@@ -1,7 +1,7 @@
 # dsh-labnana
 
 <p align="center">
-  <img src="images/logo.png" width="120" alt="dsh-labnana logo" />
+  <img src="images/logo.webp" width="200" alt="dsh-labnana logo" />
 </p>
 
 [![License](https://img.shields.io/github/license/exoticknight/dsh-labnana)](LICENSE)
