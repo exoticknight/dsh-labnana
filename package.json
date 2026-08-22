@@ -63,6 +63,7 @@
     "@types/node": "^24.13.3",
     "@types/react": "^18.3.31",
     "esbuild": "^0.28.2",
+    "pngjs": "^7.0.0",
     "typescript": "^7.0.2"
   }
 }
