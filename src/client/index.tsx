@@ -6,7 +6,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 //#region css
 const css = [
   ".dshln-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:8px;min-width:0;list-style:none;overflow:hidden;margin-bottom:8px}",
-  ".dshln-body{flex-direction:column;gap:14px;padding:14px;display:flex}",
+  ".dshln-cardOpen{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}",
+  ".dshln-cardHeader{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:transparent;border:0;display:flex;align-items:center;gap:12px;padding:14px 16px}",
+  ".dshln-cardHeader:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:-2px}",
+  ".dshln-cardHeadText{display:flex;flex-direction:column;flex:1;min-width:0;gap:4px}",
+  ".dshln-cardTitle{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}",
+  ".dshln-chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}",
+  ".dshln-chevronOpen{transform:rotate(180deg)}",
+  ".dshln-body{border-top:1px solid var(--dsw-alias-border-l2);flex-direction:column;gap:14px;padding:14px;display:flex}",
   ".dshln-field{flex-direction:column;gap:4px;min-width:0;display:flex}",
   ".dshln-label{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500}",
   ".dshln-input{border:1px solid var(--dsw-alias-border-l2);font:inherit;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary);background:var(--dsw-specific-input-major);border-radius:6px;padding:6px 8px;font-size:13px;transition:border-color .13s,box-shadow .13s;width:100%}",
@@ -81,7 +88,10 @@ const RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9", "1:4"
 // 官方 locale 字典：ns × { zh, en }
 const I18N = {
   zh: {
+    title: "Labnana 图片生成",
     description: "Labnana 图片生成 —— 文生图 / 图生图 / 精准编辑（Gemini · GPT-Image-2 · Wan2.7 · Seedream）",
+    expand: "展开设置",
+    collapse: "收起设置",
     apiKey: "API Key",
     keyEmpty: "lh_… 在 labnana.com/api-keys 创建",
     keyPlaceholderConfigured: "已配置 · 输入新值可替换",
@@ -134,7 +144,10 @@ const I18N = {
     version: "v",
   },
   en: {
+    title: "Labnana image generation",
     description: "Labnana image generation — text-to-image / image-to-image / precise editing (Gemini · GPT-Image-2 · Wan2.7 · Seedream)",
+    expand: "Show settings",
+    collapse: "Hide settings",
     apiKey: "API Key",
     keyEmpty: "lh_… create one at labnana.com/api-keys",
     keyPlaceholderConfigured: "configured — type to replace",
@@ -286,6 +299,7 @@ function LabnanaCard(props: CardProps) {
   const [ratio, setRatio] = useState("");
   const [saveToDisk, setSaveToDisk] = useState(false);
   const [outputDir, setOutputDir] = useState("");
+  const [open, setOpen] = useState(false);
   const autoTestedRef = useRef(false);
 
   // 订阅官方设置镜像（文档提交/重连时刷新；也覆盖本卡片写入后的回读）
@@ -419,13 +433,29 @@ function LabnanaCard(props: CardProps) {
   );
 
   return (
-    <li className="dshln-card" style={{ listStyle: "none" }}>
-      <div className="dshln-body">
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <p className="dshln-desc">{t("description")}</p>
-          <span className="dshln-version">{t("version")}0.2.0</span>
-        </div>
-        {loading ? (
+    <li className={"dshln-card" + (open ? " dshln-cardOpen" : "")} style={{ listStyle: "none" }}>
+      <button
+        type="button"
+        className="dshln-cardHeader"
+        aria-expanded={open}
+        aria-label={(open ? t("collapse") : t("expand")) + ": " + t("title")}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="dshln-cardHeadText">
+          <span className="dshln-cardTitle">
+            {t("title")}
+            <span className="dshln-version" style={{ marginLeft: 8 }}>{t("version")}0.2.0</span>
+          </span>
+          <span className="dshln-desc">{t("description")}</span>
+        </span>
+        {dirty ? <span className="dshln-badge">{t("unsaved")}</span> : null}
+        <svg className={"dshln-chevron" + (open ? " dshln-chevronOpen" : "")} width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M3.5 5.5L7 9l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="dshln-body">
+          {loading ? (
           <p className="dshln-hint">{t("loading")}</p>
         ) : unavailable ? (
           <p className="dshln-testFail">{t("unavailable")}</p>
@@ -563,7 +593,8 @@ function LabnanaCard(props: CardProps) {
             </div>
           </>
         )}
-      </div>
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -759,9 +790,12 @@ function apply(ctx: any) {
     credentialListeners.add(listener);
     return () => credentialListeners.delete(listener);
   };
-  const cardProps: CardProps = { t: () => "", scope, describeFace, credential: credentialStore, subscribeCredential, writeKey, unsetKey };
+  // t 由框架注入（注册声明 locale 后随 props 传入），不在 cardProps 里覆盖
+  const cardProps: Omit<CardProps, "t"> = { scope, describeFace, credential: credentialStore, subscribeCredential, writeKey, unsetKey };
 
   // 挂官方插槽 settings.plugin.item（设置 → 插件 → 可配置标签页）
+  // t 不放进 cardProps：注册声明 locale: "labnana" 后框架会注入翻译席位，
+  // 若在这里塞入桩函数会因展开顺序覆盖框架注入的 t，导致设置文字全部空白。
   ctx.slots.inject("settings.plugin.item", () =>
     ctx.slots.register(
       {
