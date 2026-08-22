@@ -25,6 +25,8 @@ jobs:
           test -f lib/index.js && echo "host ESM ok"
           test -f lib/client.js && echo "client factory ok"
           node --check lib/index.js
+      - name: Pack prebuilt tarball
+        run: npm pack --pack-destination dist
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -36,3 +38,4 @@ jobs:
             package.json
             README.md
             LICENSE
+            dist/*.tgz
