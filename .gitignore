@@ -3,7 +3,10 @@ node_modules/
 .npm-cache/
 
 # 构建产物（源码在 src/，发布走 package.json files 白名单）
-lib/
+# 注：lib/index.js 与 lib/client.js 必须入库——dsh.pub 等 source-backed 注册表
+#     校验要求 package.json 的 main / client 入口文件真实存在于 git 树中。
+lib/*.map
+lib/*.tgz
 
 # 生图输出（运行时产物）
 labnana-images/
