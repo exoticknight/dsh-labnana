@@ -5,75 +5,95 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://github.com/exoticknight/dsh-labnana)
 [![status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/exoticknight/dsh-labnana)
 
-DeepSeek Harness (dsh) 插件：集成 [Labnana](https://labnana.com) 图片生成 OpenAPI —— 文生图 / 图生图 / 精准编辑，模型含 **NanoBanana Pro (gemini-3-pro-image)、gemini-3.1-flash-image、GPT-Image-2、Wan2.7 Image/Pro、Seedream 5.0 Pro**。
+DeepSeek Harness (dsh) 插件：在会话里直接生成图片 —— 集成 [Labnana](https://labnana.com) 图片生成 OpenAPI，文生图 / 图生图 / 精准编辑，生成结果直接在对话流显示，可一键保存到当前项目。
 
-## 功能
+支持模型：**NanoBanana Pro（gemini-3-pro-image）、gemini-3.1-flash-image、GPT-Image-2、Wan2.7 Image/Pro、Seedream 5.0 Pro**（积分见[模型与积分](#模型与积分1k--2k--4k)）。
 
-- **生图工具**（会话内直接调用，模型自动使用）：
-  - `labnana_generate_image` — 文生图 / 图生图（参考图：远程 URL / 本地文件 / base64）/ Seedream 精准编辑；1K/2K 同步返回，4K 自动走异步任务 + 内部轮询；**默认不落盘**（图片驻留内存，对话卡片直接显示，可点「保存到项目」手动保存），也可 `outputMode=inline` 拿 base64
-  - `labnana_estimate_credits` — 预估积分（不扣费）
-  - `labnana_get_subscription` — 积分余额 / 免费额度 / 套餐
-  - `labnana_get_task` — 按 taskId 查询异步任务（4K / 超时兜底）
-- **对话内图片卡片**：生成结果直接在对话流显示（图片网格 + 点击放大 + 「打开文件」+ 未落盘时「保存到项目」按钮）；走官方 `tool.call.toolview` keyed 槽 + `presentationMeta` 回放
-- **网页设置**（官方 `ctx.settingsScope` + 凭据域 + i18n，卡片默认收起）：API Key 存**凭据域**（settings 只存引用 `apiKeyEnv`），徽章显示 已配置·凭据域/环境变量/未配置（脱敏预览）+ 打开即自动测试连接显示余额（✓/✗ + 错误码）；「保存图片到磁盘」勾选（默认不勾）；默认模型/尺寸/宽高比/输出目录；界面文案中英跟随系统语言
-- **系统提示注入**：模型知道工具用法、模型-积分表、尺寸/比例/参考图限制、免费额度规则、错误码
+---
 
-## 安装
+## 快速开始
 
 ```sh
-# GitHub（本仓库）
+# 1. 安装插件（GitHub 或本地源码）
 dsh plugin --profile web add github:exoticknight/dsh-labnana
+# dsh plugin --profile web add /path/to/dsh-labnana
 
-# 本地源码（插件所在目录）
-dsh plugin --profile web add /path/to/dsh-labnana
-
-# 或从 npm（发布后）
-# dsh plugin --profile web add dsh-labnana
+# 2. 重启 dsh web
 ```
 
-然后**重启 dsh web**。
+**3. 配置 API Key**（Key 在 https://labnana.com/api-keys 创建）：
 
-## 配置 API Key（官方凭据域优先）
+打开 **设置 → 插件 → 可配置 → Labnana**，填入 API Key 并保存 —— 密钥写入凭据域 `~/.dsh/.credentials.yaml`，设置文件只存引用，界面只显示脱敏预览。
 
-1. 设置页：设置 → 插件 → 可配置 → Labnana → 填 API Key → 保存（**密钥写入凭据域 `~/.dsh/.credentials.yaml`，不进入 settings 文件**；settings 只存引用 `apiKeyEnv: LABNANA_API_KEY`）
-2. 环境变量：`LABNANA_API_KEY=lh_xxxxx`（dsh 启动前设置；进程环境提供的凭据只读）
-3. 直接写 `~/.dsh/.credentials.yaml`：
+**4. 在对话里说：**
+
+> 生成一张 16:9 的电影海报：玻璃材质的未来派耳机漂浮在深色背景中
+
+图片会直接显示在对话流（默认不落盘），点卡片上的「保存到项目」即可写入当前项目 `labnana-images/`。
+
+---
+
+## 特性
+
+- **4 个工具**（模型自动调用）：
+  | 工具 | 作用 |
+  |---|---|
+  | `labnana_generate_image` | 文生图 / 图生图（参考图：远程 URL / 本地文件 / base64）/ Seedream 精准编辑；1K/2K 同步，4K 自动异步任务 + 轮询 |
+  | `labnana_estimate_credits` | 预估积分（不扣费） |
+  | `labnana_get_subscription` | 积分余额 / 免费额度 / 套餐 |
+  | `labnana_get_task` | 按 taskId 查询异步任务（4K / 超时兜底） |
+- **对话内图片卡片**：生成结果直接显示（网格 + 点击放大 + 「打开文件」+ 未落盘时「保存到项目」按钮），历史会话回放同样可见
+- **网页设置**：官方 `settingsScope` 读写、凭据域存 Key、打开自动测试连接显示余额、默认模型/尺寸/比例/输出目录、「保存图片到磁盘」开关；文案中英跟随系统语言
+- **系统提示注入**：模型知道工具用法、模型-积分表、尺寸/比例/参考图限制、免费额度规则、错误码与重试建议
+
+## 配置
+
+### API Key（凭据域）
+
+三种方式，任选其一：
+
+1. **设置页**：设置 → 插件 → 可配置 → Labnana → 填 Key → 保存
+2. **环境变量**：`LABNANA_API_KEY=lh_xxxxx`（dsh 启动前设置；进程环境提供的凭据只读）
+3. **直接写文件**：
 
 ```yaml
+# ~/.dsh/.credentials.yaml —— 值只存在这里
 version: 1
 refs:
-  LABNANA_API_KEY: lh_xxxxx   # 值只存在这里
+  LABNANA_API_KEY: lh_xxxxx
 ```
 
-再在 `~/.dsh/settings.yaml` 写明引用：
-
 ```yaml
+# ~/.dsh/settings.yaml —— settings 只携带对机密的引用
 labnana:
-  apiKeyEnv: LABNANA_API_KEY   # settings 只携带对机密的引用
-  saveToDisk: false            # 默认不保存图片；勾选后自动保存到项目 labnana-images/
+  apiKeyEnv: LABNANA_API_KEY
+  saveToDisk: false            # 默认不保存图片；勾选后自动保存
   defaultModel: gemini-3-pro-image
   defaultImageSize: 2K
   defaultAspectRatio: 1:1
-  outputDir: ""   # 留空 = 当前项目（会话工作区）下的 labnana-images/
+  outputDir: ""                # 留空 = 当前项目 labnana-images/
 ```
 
-解析优先链：`apiKeyEnv` 引用（凭据域 > 进程环境）> 默认引用 `LABNANA_API_KEY`（credentials > env）。settings 只认引用，不再接受明文密钥。API Key 在 https://labnana.com/api-keys 创建。
+解析优先链：`apiKeyEnv` 引用（凭据域 > 进程环境）→ 默认引用 `LABNANA_API_KEY`（credentials > env）。
 
-**保存策略**：
-- 默认（`saveToDisk: false`）：**不落盘** —— 图片驻留进程内存（零磁盘写入），对话卡片直接显示，点「保存到项目」按钮才写入当前项目 `labnana-images/`
-- 勾选「保存图片到磁盘」或传 `saveDir`：按 `saveDir` > 设置 `outputDir` > 当前项目 `<workspace>/labnana-images/`（会话工作区根目录）> 进程 cwd 兜底，自动落盘
-- 已保存的图由 `/api/dsh-labnana-images/<file>` 提供（跨会话/跨重启可查，含所有已注册 workspace）；未保存的图重启后失效（内存释放）
+### 保存策略
 
-## 用法示例（对话）
+| 场景 | 行为 |
+|---|---|
+| 默认（`saveToDisk: false`） | **不落盘**：图片驻留进程内存（零磁盘写入），对话卡片直接显示，「保存到项目」按钮才写入当前项目 `labnana-images/`；未保存的图重启后失效 |
+| 勾选「保存图片到磁盘」或传 `saveDir` | 自动落盘，按 `saveDir` > 设置 `outputDir` > 当前项目 `<workspace>/labnana-images/` > 进程 cwd 兜底 |
+| 已保存的图 | 由 `/api/dsh-labnana-images/<file>` 提供，跨会话/跨重启可查（含所有已注册 workspace） |
 
-> 「生成一张 16:9 的电影海报：玻璃材质的未来派耳机漂浮在深色背景中」
-> → agent 调用 `labnana_generate_image`，图片直接显示在对话卡片（默认不落盘），需要保留时点「保存到项目」或勾选设置里的「保存图片到磁盘」
+## 使用示例（对话）
 
 > 「把这张图的背景改成内蒙古大草原」＋ 附上图片（或给本地路径）
-> → agent 传 `referenceImages: [{ filePath: "..." }]`
+> → 传 `referenceImages: [{ filePath: "..." }]`
 
 > 「用 seedream 把图片左上 (376,363) 到右下 (701,638) 区域改成绿色」
 > → 精准编辑：源图进 referenceImages，坐标写进 prompt
+
+> 「换个赛博朋克风格再生成一次」
+> → 基于上一张图迭代（images[].path 作为参考图）
 
 ## 模型与积分（1K / 2K / 4K）
 
@@ -97,28 +117,50 @@ labnana:
 | 29003 | 参数错误 | 核对模型限制 |
 | 29998 | 限流 | 等待 20-30s 重试 |
 
-## 开发（TypeScript + esbuild 构建链，v0.2.0）
+---
 
-```sh
-npm install        # devDependencies：esbuild / typescript / 官方类型包
-npm run typecheck  # tsc --noEmit（严格模式）
-npm run build      # esbuild：
-                   #   src/host/index.ts  → lib/index.js   （Node ESM，@deepseek-ai/* external）
-                   #   src/client/*.tsx   → lib/client.js  （lazy-CJS factory：window.__ModuleLoader__.load + 注入 require）
+## 开发者 / AI 参考（Developer / AI reference）
+
+TypeScript + esbuild 构建链，无运行时编译依赖。
+
+### 项目结构
+
+```
+dsh-labnana/
+├── src/
+│   ├── host/index.ts        # Host 端：API 客户端、4 个工具、settings namespace、HTTP 端点、系统提示
+│   └── client/
+│       ├── entry.ts         # client bundle 入口（lazy-CJS factory 包装）
+│       └── index.tsx        # 设置卡片 + 对话图片卡片 + i18n 字典
+├── scripts/build.mjs        # esbuild 构建脚本（host ESM + client factory bundle）
+├── lib/                     # 构建产物（git 忽略，发布走 package.json files 白名单）
+├── cordis.patch.yml         # dsh bundle patch（默认配置）
+└── tsconfig.json            # strict 模式
 ```
 
-- `src/host/index.ts` — Host 端（TS）：API 客户端、4 个工具（官方 `defineTool` 类型化 schema/execute）、settings namespace（apiKeyEnv/saveToDisk）、`/api/dsh-labnana-settings/test`、图片服务 + 手动保存端点、系统提示
-- `src/client/` — Client 端（TSX）：`entry.ts`（factory 包装入口）+ `index.tsx`（设置卡片：官方 `settingsScope` + `credentials` 域 + i18n `locale` 席位；对话图片卡片：`tool.call.toolview` keyed 槽）
-- 依赖：`@deepseek-ai/dsh-tools` / `dsh-settings` / `cordis` / `schemastery` 为 devDependencies（类型 + 构建解析），运行时走安装树唯一实例（peerDependencies）；官方依据：cookbook `adding-a-settings-card.zh.md`、`adding-a-tool.zh.md` + `packages/client/ui-settings/README.zh.md`
-- client 产物格式与官方一致（lazy-CJS factory，react/react/jsx-runtime external → 注入 require）
+### 构建与检查
 
-## 路线图（未实现）
+```sh
+npm install        # devDependencies：esbuild / typescript / 官方类型包（dsh-tools、dsh-settings、cordis、schemastery）
+npm run typecheck  # tsc --noEmit（strict）
+npm run build      # esbuild：
+                   #   src/host/index.ts → lib/index.js    （Node ESM，@deepseek-ai/* external，走安装树唯一实例）
+                   #   src/client/*.tsx  → lib/client.js   （lazy-CJS factory：window.__ModuleLoader__.load + 注入 require）
+```
 
-- **Labnana Studio 工作台**：`conversation.view` 标签页 —— prompt 编辑器 + 参数面板 + 生成历史画廊
-- **快捷入口**：侧边栏浮层 / 输入区 dock 生图 chip（/imagine 式命令体验）
-- **任务历史页**：`GET /tasks` 列表接入设置卡片"生成记录"
-- **批量生成**：一次调用生成多张对比（需服务端确认）
-- **上传中转**：大参考图先传对象存储再走 fileUri（当前 base64 上限 15MB）
-- **TUI 适配**：终端 ASCII 预览 + `/labnana` 命令
+### 架构：dsh 插件双半侧
 
-方案与调研细节见 `docs/PLAN.md`（历史设计稿，已随 v0.2.0 落地归档删除）。
+- **Host**（Node）：标准 cordis 插件 `export { name, inject, Config, apply }`；工具用官方 `defineTool`（类型化 schema + `execute` + `presentationMeta`）；settings 用 `installSettingsSection`；HTTP 端点用 `ctx.webServer`（loopback 保护）
+- **Client**（浏览器）：`dsh.client` 声明 + `exports["./client"]` → dsh-client-modules 服务 `/plugins/<id>/client.js`；产物必须是 lazy-CJS factory（react / react/jsx-runtime 走注入 require）
+- **官方扩展点使用清单**：`ctx.settingsScope`（设置读写，revision 栅）· `api.credentials`（密钥读写，`credentials/reference-updated` 事件）· `ctx.locale`（i18n 字典 + slot `locale` 席位）· `tool.call.toolview` keyed 槽（对话图片卡片）· `exec.agent.session.header.cwd`（保存目录基准）· `workspaceRegistry`（图片服务跨 workspace 查找）
+
+### 工具定义（模型视角）
+
+- `labnana_generate_image`：`prompt`（必填）+ `model` / `imageSize` / `aspectRatio` / `referenceImages` / `outputMode` / `saveDir` / `async` / `waitSeconds`；返回 `{ ok, saved, images: [{url, path?, mimeType, size}], model, imageSize, aspectRatio, taskId? }`
+- `labnana_estimate_credits`：`prompt`（必填）+ `model` / `imageSize` / `aspectRatio`；返回 `{ ok, credits, canGenerate, requiresSubscription, warnings? }`
+- `labnana_get_subscription`：无参数；返回余额/免费额度/套餐
+- `labnana_get_task`：`taskId`（必填）；返回任务状态与图片 URL
+
+## License
+
+[Apache-2.0](LICENSE)
