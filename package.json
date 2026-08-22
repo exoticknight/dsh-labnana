@@ -34,6 +34,14 @@
     "seedream"
   ],
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/exoticknight/dsh-labnana.git"
+  },
+  "homepage": "https://github.com/exoticknight/dsh-labnana#readme",
+  "bugs": {
+    "url": "https://github.com/exoticknight/dsh-labnana/issues"
+  },
   "engines": {
     "node": ">=20"
   },
