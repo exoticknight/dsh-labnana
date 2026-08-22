@@ -1,0 +1,14 @@
+# 依赖
+node_modules/
+.npm-cache/
+
+# 构建产物（源码在 src/，发布走 package.json files 白名单）
+lib/
+
+# 生图输出（运行时产物）
+labnana-images/
+
+# 日志与临时
+*.log
+.DS_Store
+Thumbs.db

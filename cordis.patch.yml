@@ -1,0 +1,20 @@
+# dsh-labnana — Labnana 图片生成插件
+# 为模型提供 labnana_generate_image / labnana_estimate_credits /
+# labnana_get_subscription / labnana_get_task 工具；设置卡片挂在
+# 设置 → 插件 → 可配置 → Labnana（API key 存凭据域 ~/.dsh/.credentials.yaml，脱敏显示）。
+# 配置也可直接写在 ~/.dsh/settings.yaml 的 labnana: 分节：
+#   labnana:
+#     apiKeyEnv: LABNANA_API_KEY   # settings 只存凭据引用（值在 .credentials.yaml）
+#     saveToDisk: false            # 默认不保存图片；勾选后自动保存到项目 labnana-images/
+#     defaultModel: gemini-3-pro-image
+#     defaultImageSize: 2K        # 1K | 2K | 4K
+#     defaultAspectRatio: 1:1
+#     outputDir: ""               # 默认 <workspace>/labnana-images
+- insert:
+    - id: dsh-labnana
+      name: dsh-labnana
+      config:
+        defaultModel: gemini-3-pro-image
+        defaultImageSize: 2K
+        defaultAspectRatio: 1:1
+        outputDir: ""
