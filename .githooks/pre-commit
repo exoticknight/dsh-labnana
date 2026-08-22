@@ -1,0 +1,12 @@
+#!/bin/sh
+# Auto-rebuild lib/ before commit so source-backed registries (dsh.pub et al.)
+# always see fresh artifacts. Runs only when source-affecting files are staged.
+set -e
+
+if git diff --cached --name-only | grep -Eq '^(src/|scripts/build\.mjs|package\.json|tsconfig\.json)'; then
+  echo '> source files changed — rebuilding lib/ ...'
+  npm run build || exit 1
+  git add lib/index.js lib/client.js
+fi
+
+exit 0

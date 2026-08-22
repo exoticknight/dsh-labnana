@@ -22,3 +22,9 @@ jobs:
           test -f lib/index.js && echo "host ESM ok"
           test -f lib/client.js && echo "client factory ok"
           node --check lib/index.js
+      - name: Verify committed lib/ is fresh
+        run: |
+          git diff --exit-code -- lib/ || {
+            echo "::error::lib/ is stale — run 'npm run build' and commit the rebuilt artifacts"
+            exit 1
+          }
