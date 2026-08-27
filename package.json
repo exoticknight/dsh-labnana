@@ -1,6 +1,6 @@
 {
   "name": "dsh-labnana",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Labnana image generation for DeepSeek Harness: text-to-image / image-to-image / precise editing with credits estimation, subscription balance and web settings UI.",
   "type": "module",
   "main": "lib/index.js",
