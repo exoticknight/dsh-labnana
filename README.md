@@ -4,11 +4,13 @@
   <img src="images/logo.webp" width="200" alt="dsh-labnana logo" />
 </p>
 
-[![License](https://img.shields.io/github/license/exoticknight/dsh-labnana)](LICENSE)
-[![dsh plugin](https://img.shields.io/badge/dsh%20plugin-v0.3.0-4b32c3)](https://github.com/exoticknight/dsh-labnana)
+[![dsh plugin](https://img.shields.io/github/v/release/exoticknight/dsh-labnana?display_name=tag&sort=semver&label=dsh%20plugin&color=4b32c3)](https://github.com/exoticknight/dsh-labnana/releases/latest)
+[![npm](https://img.shields.io/npm/v/dsh-labnana?logo=npm)](https://www.npmjs.com/package/dsh-labnana)
 [![CI](https://img.shields.io/github/actions/workflow/status/exoticknight/dsh-labnana/ci.yml?branch=main)](https://github.com/exoticknight/dsh-labnana/actions)
+[![Release downloads](https://img.shields.io/github/downloads/exoticknight/dsh-labnana/total?label=release%20downloads)](https://github.com/exoticknight/dsh-labnana/releases)
+[![dsh.pub](https://img.shields.io/badge/dsh.pub-listed-4b32c3)](https://dsh.pub/zh/plugins/dsh-labnana/)
+[![License](https://img.shields.io/github/license/exoticknight/dsh-labnana)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://github.com/exoticknight/dsh-labnana)
-[![status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/exoticknight/dsh-labnana)
 
 DeepSeek Harness (dsh) 插件：在会话里直接生成图片 —— 集成 [Labnana](https://labnana.com) 图片生成 OpenAPI，文生图 / 图生图 / 精准编辑，生成结果直接在对话流显示，可一键保存到当前项目。
 
@@ -19,7 +21,10 @@ DeepSeek Harness (dsh) 插件：在会话里直接生成图片 —— 集成 [La
 ## 快速开始
 
 ```sh
-# 1. 安装插件（GitHub 或本地源码）
+# 1. 安装插件（推荐 npm）
+dsh plugin --profile web add dsh-labnana
+
+# 也可以从 GitHub 或本地源码安装
 dsh plugin --profile web add github:exoticknight/dsh-labnana
 # dsh plugin --profile web add /path/to/dsh-labnana
 
