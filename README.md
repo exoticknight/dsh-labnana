@@ -174,3 +174,10 @@ npm run build      # esbuild：
 ## License
 
 [Apache-2.0](LICENSE)
+
+
+## 社区
+
+- [LINUX DO](https://linux.do/)
+- [Awesome DSH Plugin](https://awesome-dsh-plugin.com/)
+- [GitHub Issues](https://github.com/exoticknight/dsh-labnana/issues)
