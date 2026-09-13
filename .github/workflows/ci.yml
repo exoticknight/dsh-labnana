@@ -15,8 +15,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build
+      - run: npm run check
       - name: Verify build artifacts
         run: |
           test -f lib/index.js && echo "host ESM ok"

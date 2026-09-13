@@ -20,6 +20,8 @@ DeepSeek Harness (dsh) 插件：在会话里直接生成图片 —— 集成 [La
 
 ## 快速开始
 
+要求 DeepSeek Harness **0.1.2-rc.1 及以上版本**。
+
 ```sh
 # 1. 安装插件（推荐 npm）
 dsh plugin --profile web add dsh-labnana
