@@ -1,6 +1,6 @@
 {
   "name": "dsh-labnana",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Labnana image generation for DeepSeek Harness: text-to-image / image-to-image / precise editing with credits estimation, subscription balance and web settings UI.",
   "type": "module",
   "main": "lib/index.js",
@@ -10,6 +10,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "src/client/official/LICENSE",
     "lib/index.js",
     "lib/client.js",
     "cordis.patch.yml"
@@ -17,7 +18,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check": "npm run typecheck && npm run build"
+    "check": "npm run typecheck && npm run build && node scripts/check-settings.mjs && node scripts/check-connection.mjs && node scripts/check-client-settings.mjs"
   },
   "keywords": [
     "deepseek-harness",
@@ -49,8 +50,8 @@
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-settings": ">=0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.6"
+    "@deepseek-ai/dsh-settings": ">=0.1.2-rc.1",
+    "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1"
   },
   "dsh": {
     "bundle": {
@@ -66,8 +67,9 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-settings": "^0.1.1-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-settings": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.1.2-rc.1",
     "@types/node": "^24.13.3",
     "@types/react": "^18.3.31",
     "esbuild": "^0.28.2",

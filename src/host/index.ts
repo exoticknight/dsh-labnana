@@ -4,7 +4,7 @@
 // namespace（apiKeyEnv 引用 + saveToDisk）与 /api/dsh-labnana-settings/test、
 // /api/dsh-labnana-images（图片服务 + 手动保存）端点。
 import type { Context } from "@deepseek-ai/cordis";
-import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
+import type {} from "@deepseek-ai/dsh-settings";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
@@ -20,10 +20,10 @@ const EP_TASKS = "/openapi/v1/images/generation/tasks";
 const EP_SUBSCRIPTION = "/openapi/v1/user/subscription";
 const EP_ESTIMATE = "/openapi/v1/images/generation/estimate-credits";
 
-const NS = settingsNamespace("labnana");
+const NS = "labnana";
 const BRIDGE_PREFIX = "/api/dsh-labnana-settings";
 const IMAGE_PREFIX = "/api/dsh-labnana-images";
-const PLUGIN_VERSION = "0.3.0";
+const PLUGIN_VERSION = __LABNANA_VERSION__;
 
 // 已生成图片索引：filename -> 绝对路径（供图片服务端点在进程内快速定位生成图）
 const SAVED_IMAGES = new Map<string, string>();
@@ -179,12 +179,10 @@ async function keyStateOf(ctx: Context, config: Partial<LabnanaConfig>): Promise
       return { configured: true, source: "env", ref: cfg.apiKeyEnv, masked: maskKey(fromEnv) };
     }
   }
-  try {
-    const resolved = await resolveKeyAsync(ctx, cfg);
-    if (typeof resolved === "string" && resolved.length > 0) {
-      return { configured: true, source: "env", ref: "LABNANA_API_KEY", masked: maskKey(resolved) };
-    }
-  } catch {}
+  const stored = await resolveCredentialValue(ctx, "LABNANA_API_KEY");
+  if (stored) return { configured: true, source: "credentials", ref: "LABNANA_API_KEY", masked: maskKey(stored) };
+  const fromEnv = process.env.LABNANA_API_KEY;
+  if (fromEnv) return { configured: true, source: "env", ref: "LABNANA_API_KEY", masked: maskKey(fromEnv) };
   return { configured: false, source: "none", masked: "" };
 }
 
@@ -505,14 +503,14 @@ function apply(ctx: Context, config: LabnanaConfig) {
   // 刷新系统提示词（settings 变更时）
   let refreshPrompt: (() => void) | null = null;
 
-  installSettingsSection(ctx, NS, Config, config ?? {}, {
+  ctx.inject(["settings"], (sctx) => sctx.settings.installSection(ctx, NS, Config, config ?? {}, {
     setSource: (source) => {
       current = source;
     },
     onChange: () => {
       if (typeof refreshPrompt === "function") refreshPrompt();
     },
-  });
+  }));
 
   //#region 核心业务
   interface GenImageOut {
@@ -989,11 +987,11 @@ function apply(ctx: Context, config: LabnanaConfig) {
     }
   };
 
-  async function testConnection(): Promise<Record<string, unknown>> {
+  async function testConnection(apiKey?: string): Promise<Record<string, unknown>> {
     // 测试 API key：调 subscription 接口，返回余额摘要；keyState 仅含脱敏预览
     const cfg = current();
     const keyState = await keyStateOf(ctx, cfg);
-    const key = await resolveKeyAsync(ctx, cfg);
+    const key = apiKey || await resolveKeyAsync(ctx, cfg);
     if (!key) {
       return { ok: false, code: "21007", message: "API key 未配置。请在下方填写或设置 LABNANA_API_KEY 环境变量。", keyState };
     }
@@ -1039,7 +1037,16 @@ function apply(ctx: Context, config: LabnanaConfig) {
       path: `${BRIDGE_PREFIX}/test`,
       handler: async (req: any, res: any) => {
         if (!guard(req, res)) return;
-        writeJson(res, 200, await testConnection());
+        // Accept the unsaved form value for this request only. Empty legacy
+        // requests continue to test the stored credential.
+        const hasBody = req.headers["transfer-encoding"] || Number(req.headers["content-length"] ?? 0) > 0;
+        const body = hasBody ? await readJsonBody(req) : {};
+        if (!body || typeof body !== "object" || Array.isArray(body) ||
+            (body.apiKey !== undefined && typeof body.apiKey !== "string")) {
+          writeJson(res, 400, { ok: false, code: "bad-request", message: "malformed JSON body" });
+          return;
+        }
+        writeJson(res, 200, await testConnection(typeof body.apiKey === "string" ? body.apiKey.trim() : undefined));
       },
     });
     // 手动保存：把未落盘图片复制到项目 labnana-images/（对话卡片"保存到项目"按钮）
@@ -1119,7 +1126,7 @@ function apply(ctx: Context, config: LabnanaConfig) {
           "## Labnana image generation (dsh-labnana plugin)",
           "",
           "You can generate images with the Labnana API. Tools:",
-          "- `labnana_generate_image` — text-to-image / image-to-image / precise editing. Pass referenceImages for image-to-image (url = remote image, filePath = local file, data = base64). Default output is saved to the current project's labnana-images/ directory and paths are returned; use outputMode=inline for base64.",
+          "- `labnana_generate_image` — text-to-image / image-to-image / precise editing. Pass referenceImages for image-to-image (url = remote image, filePath = local file, data = base64). Images remain in memory by default; saveToDisk or an explicit saveDir persists them. Use outputMode=inline for base64.",
           "- `labnana_estimate_credits` — estimate credit cost without generating.",
           "- `labnana_get_subscription` — check credits / free usage before generating.",
           "- `labnana_get_task` — query an async task by taskId (after a 4K/timeout generation).",
@@ -1155,6 +1162,7 @@ function apply(ctx: Context, config: LabnanaConfig) {
     sctx.effect(() => {
       refreshPrompt?.();
       return () => {
+        refreshPrompt = null;
         if (disposeSection) {
           disposeSection();
           disposeSection = null;

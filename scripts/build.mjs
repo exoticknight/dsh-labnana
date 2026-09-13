@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lib = path.join(root, "lib");
+const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
+const define = { __LABNANA_VERSION__: JSON.stringify(version) };
 
 // host 端：Node ESM，运行时依赖全部 external（走安装树唯一实例）
 await build({
+  define,
   entryPoints: [path.join(root, "src/host/index.ts")],
   bundle: true,
   platform: "node",
@@ -23,13 +26,15 @@ await build({
 // client 端：CJS bundle（react 等 external → 注入 require），
 // 然后包进 __ModuleLoader__.load 的 lazy-CJS factory（官方产物形态）
 const client = await build({
+  define,
   entryPoints: [path.join(root, "src/client/entry.ts")],
   bundle: true,
   platform: "browser",
+  loader: { ".css": "text" },
   format: "cjs",
   target: "es2020",
   jsx: "automatic",
-  external: ["react", "react/jsx-runtime"],
+  external: ["react", "react/jsx-runtime", "@deepseek-ai/*"],
   write: false,
   logLevel: "info",
 });
