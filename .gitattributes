@@ -1,0 +1,2 @@
+# CSS is embedded as text in the client bundle; keep builds identical across OSes.
+src/client/official/*.css text eol=lf
