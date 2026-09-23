@@ -22,6 +22,7 @@ const EP_SUBSCRIPTION = "/openapi/v1/user/subscription";
 const EP_ESTIMATE = "/openapi/v1/images/generation/estimate-credits";
 
 const NS = "labnana";
+const CONFIG_FORM_NS = "dsh-labnana";
 const BRIDGE_PREFIX = "/api/dsh-labnana-settings";
 const IMAGE_PREFIX = "/api/dsh-labnana-images";
 const PLUGIN_VERSION = __LABNANA_VERSION__;
@@ -165,7 +166,7 @@ async function resolveCredentialValue(ctx: Context, envName: string): Promise<st
 // key 解析优先级（官方模式：配置只携带对机密的引用，绝不携带机密本身）：
 // 1) settings.labnana.apiKeyEnv（环境变量名引用，值存 credentials 域，回退进程环境）
 // 2) 默认引用 LABNANA_API_KEY（credentials 域 > 进程环境）
-async function resolveKey(ctx: Context, config: Partial<LabnanaConfig>): Promise<string> {
+async function resolveKey(ctx: Context, config: Partial<LabnanaSettings>): Promise<string> {
   const cfg = config ?? {};
   if (typeof cfg.apiKeyEnv === "string" && cfg.apiKeyEnv.length > 0) {
     const viaCred = await resolveCredentialValue(ctx, cfg.apiKeyEnv);
@@ -178,7 +179,7 @@ async function resolveKey(ctx: Context, config: Partial<LabnanaConfig>): Promise
   return process.env.LABNANA_API_KEY ?? "";
 }
 
-async function resolveKeyAsync(ctx: Context, config: Partial<LabnanaConfig>): Promise<string> {
+async function resolveKeyAsync(ctx: Context, config: Partial<LabnanaSettings>): Promise<string> {
   return resolveKey(ctx, config);
 }
 
@@ -197,7 +198,7 @@ interface KeyState {
 }
 
 // key 状态（供设置 UI 展示，不泄露密钥）
-async function keyStateOf(ctx: Context, config: Partial<LabnanaConfig>): Promise<KeyState> {
+async function keyStateOf(ctx: Context, config: Partial<LabnanaSettings>): Promise<KeyState> {
   const cfg = config ?? {};
   if (typeof cfg.apiKeyEnv === "string" && cfg.apiKeyEnv.length > 0) {
     const viaCred = await resolveCredentialValue(ctx, cfg.apiKeyEnv);
@@ -265,7 +266,7 @@ function buildReferenceImage(entry: unknown, index: number): { ok: true; value: 
 
 // 生成保存目录优先链：saveDir > config.outputDir > <会话工作区>/labnana-images > <cwd>/labnana-images
 // 会话工作区 = 当前项目的绝对路径（session.header.cwd），避免落到 dsh 安装/打包目录。
-function resolveOutputDir(config: Partial<LabnanaConfig>, saveDir?: string, workspaceCwd?: string): string {
+function resolveOutputDir(config: Partial<LabnanaSettings>, saveDir?: string, workspaceCwd?: string): string {
   if (saveDir && saveDir.length > 0) return path.resolve(saveDir);
   if (config?.outputDir && config.outputDir.length > 0) return path.resolve(config.outputDir);
   const base = workspaceCwd && workspaceCwd.length > 0 ? workspaceCwd : process.cwd();
@@ -310,7 +311,7 @@ async function downloadImage(dir: string, url: string, mimeType: string, timeout
 
 // 从候选输出目录中按文件名找回图片绝对路径（历史图 / 跨进程图）
 // 候选：config.outputDir > <cwd>/labnana-images > 本进程用过的保存目录 > extraDirs（如已注册 workspace 的 labnana-images）
-function findSavedImage(name: string, cfg: Partial<LabnanaConfig> = {}, extraDirs: string[] = []): string | undefined {
+function findSavedImage(name: string, cfg: Partial<LabnanaSettings> = {}, extraDirs: string[] = []): string | undefined {
   const dirs: string[] = [];
   if (typeof cfg.outputDir === "string" && cfg.outputDir.length > 0) dirs.push(cfg.outputDir);
   dirs.push(path.join(process.cwd(), "labnana-images"));
@@ -398,7 +399,7 @@ interface GeneratePayload {
 }
 
 // 组装生图请求体（顶层，纯函数）
-function buildPayload(args: GenerateArgs, cfg: Partial<LabnanaConfig>): GeneratePayload {
+function buildPayload(args: GenerateArgs, cfg: Partial<LabnanaSettings>): GeneratePayload {
   const model = args.model ?? cfg?.defaultModel ?? "gemini-3-pro-image";
   const meta = MODELS[model];
   if (!meta) {
@@ -492,7 +493,7 @@ async function subscriptionSummary(key: string, signal?: AbortSignal): Promise<S
 const name = "dsh-labnana";
 const inject: string[] = [];
 
-interface LabnanaConfig {
+interface LabnanaSettings {
   apiKeyEnv: string;
   saveToDisk: boolean;
   defaultModel: string;
@@ -502,17 +503,47 @@ interface LabnanaConfig {
   timeoutSeconds: number;
 }
 
-const Config: z<LabnanaConfig> = z.object({
-  // 官方模式：settings 只携带对机密的引用（环境变量名），值存 credentials 域
-  apiKeyEnv: z.string().default(""),
-  // 默认不保存图片到磁盘；勾选后每次生成自动保存到项目 labnana-images/
-  saveToDisk: z.boolean().default(false),
-  defaultModel: z.string().default("gemini-3-pro-image"),
-  defaultImageSize: z.string().default("2K"),
-  defaultAspectRatio: z.string().default("1:1"),
-  outputDir: z.string().default(""),
-  timeoutSeconds: z.number().default(120),
-});
+function createConfig(live: boolean) {
+  const field = (schema: any) => live ? schema.volatile() : schema;
+  return z.object({
+    // 官方模式：settings 只携带对机密的引用（环境变量名），值存 credentials 域
+    apiKeyEnv: field(z.string().role("credential-ref").default("")),
+    // 默认不保存图片到磁盘；勾选后每次生成自动保存到项目 labnana-images/
+    saveToDisk: field(z.boolean().default(false)),
+    defaultModel: field(z.string().default("gemini-3-pro-image")),
+    defaultImageSize: field(z.string().default("2K")),
+    defaultAspectRatio: field(z.string().default("1:1")),
+    outputDir: field(z.string().default("")),
+    timeoutSeconds: field(z.number().default(120)),
+  });
+}
+
+const Config = createConfig(true);
+// The 0.1.2 settings provider exposes plain values to its remote form API.
+// dsh 0.1.7-rc consumes Config's Volatile references directly instead.
+const LegacySettingsConfig = createConfig(false);
+
+type VolatileValue<T> = T | { get(): T };
+
+function readConfig(config: unknown): Partial<LabnanaSettings> {
+  if (!config || typeof config !== "object") return {};
+  const values = config as Record<string, VolatileValue<unknown> | undefined>;
+  const read = <T>(value: VolatileValue<T> | undefined): T | undefined => {
+    if (value && typeof value === "object" && "get" in value && typeof value.get === "function") {
+      return value.get();
+    }
+    return value as T | undefined;
+  };
+  return {
+    apiKeyEnv: read(values.apiKeyEnv) as string | undefined,
+    saveToDisk: read(values.saveToDisk) as boolean | undefined,
+    defaultModel: read(values.defaultModel) as string | undefined,
+    defaultImageSize: read(values.defaultImageSize) as string | undefined,
+    defaultAspectRatio: read(values.defaultAspectRatio) as string | undefined,
+    outputDir: read(values.outputDir) as string | undefined,
+    timeoutSeconds: read(values.timeoutSeconds) as number | undefined,
+  };
+}
 
 interface SystemPromptSectionService {
   section(options: { name: string; order: number; text: string }): () => void;
@@ -528,8 +559,8 @@ interface HttpServerContext {
   };
 }
 
-function apply(ctx: Context, config: LabnanaConfig) {
-  let current = () => config ?? {};
+function apply(ctx: Context, config: unknown) {
+  let current = () => readConfig(config);
   const logger = ctx.logger;
 
   ctx.effect(() => () => {
@@ -542,14 +573,38 @@ function apply(ctx: Context, config: LabnanaConfig) {
   // 刷新系统提示词（settings 变更时）
   let refreshPrompt: (() => void) | null = null;
 
-  ctx.inject(["settings"], (sctx) => sctx.settings.installSection(ctx, NS, Config, config ?? {}, {
-    setSource: (source) => {
-      current = source;
-    },
-    onChange: () => {
-      if (typeof refreshPrompt === "function") refreshPrompt();
-    },
-  }));
+  ctx.inject(["settings"], (sctx) => {
+    const settings = sctx.settings as unknown as {
+      installSection?: (
+        owner: Context,
+        namespace: string,
+        schema: typeof Config,
+        initial: unknown,
+        options: { setSource: (source: () => unknown) => void; onChange: () => void },
+      ) => unknown;
+      configure?: (presentation: { auto?: boolean }, owner?: unknown) => () => void;
+    };
+    if (typeof settings.installSection === "function") {
+      settings.installSection(ctx, NS, LegacySettingsConfig, readConfig(config), {
+        setSource: (source) => {
+          current = () => readConfig(source());
+        },
+        onChange: () => {
+          refreshPrompt?.();
+        },
+      });
+      return;
+    }
+    if (typeof settings.configure !== "function") {
+      ctx.logger.warn("dsh-labnana: settings provider exposes no supported configuration API");
+      return;
+    }
+    const configure = settings.configure;
+    sctx.effect(() => configure.call(settings, { auto: false }, ctx.fiber), "dsh-labnana: settings page policy");
+    sctx.effect(() => sctx.on("settings/document-updated", (namespace: string) => {
+      if (namespace === CONFIG_FORM_NS) refreshPrompt?.();
+    }), "dsh-labnana: settings updates");
+  });
 
   //#region 核心业务
   interface GenImageOut {
@@ -571,7 +626,7 @@ function apply(ctx: Context, config: LabnanaConfig) {
   }
 
   // 生图主流程：4K（或 async=true）走异步任务 + 轮询；否则同步
-  async function generateImage(args: GenerateArgs, cfg: Partial<LabnanaConfig>, key: string, workspaceCwd: string, signal: AbortSignal): Promise<GenImageOut> {
+  async function generateImage(args: GenerateArgs, cfg: Partial<LabnanaSettings>, key: string, workspaceCwd: string, signal: AbortSignal): Promise<GenImageOut> {
     signal.throwIfAborted();
     const payload = await buildPayload(args, cfg);
     const model = payload.model;

@@ -58,7 +58,7 @@ export interface ScopeSnapshot {
 export interface SettingsScope {
   getSnapshot(): ScopeSnapshot;
   subscribe(listener: () => void): () => void;
-  mutate(ops: Array<{ op: "set"; path: string[]; value: unknown }>, revision?: number): Promise<void>;
+  mutate(ops: Array<{ op: "set"; path: string[]; value: unknown }>, revision?: number): Promise<unknown>;
 }
 export async function saveFields(scope: SettingsScope, fields: Array<[string, unknown]>) {
   const before = scope.getSnapshot();

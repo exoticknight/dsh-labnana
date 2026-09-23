@@ -2,7 +2,7 @@
 // 设置卡片（官方 settingsScope + credentials 域 + i18n locale 席位）
 // 对话流内生图结果卡片（官方 tool.call.toolview keyed 槽）
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, IconChevronDownOutline14 } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
 import officialCardCss from "./official/PluginCard.css";
 import officialFieldsCss from "./official/fields.css";
 import { createCredentials, saveFields, type CredentialState, type SettingsScope } from "./settings.js";
@@ -11,6 +11,7 @@ import { createCredentials, saveFields, type CredentialState, type SettingsScope
 const css = [
   officialCardCss,
   officialFieldsCss,
+  ".dshln-chevron{display:inline-flex;font-size:20px;line-height:1}",
   ".dshln-testOk{color:#7ddb9c;font-size:12px;line-height:1.6}",
   ".dshln-testFail{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:1.6}",
   ".dshln-testing{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.6}",
@@ -51,6 +52,8 @@ if (typeof document !== "undefined" && document.querySelector("style[data-plugin
 //#endregion
 
 const NS = "labnana";
+const LEGACY_SETTINGS_NS = "labnana";
+const CONFIG_FORM_NS = "dsh-labnana";
 const TEST_URL = "/api/dsh-labnana-settings/test";
 const MODELS = [
   "gemini-3-pro-image",
@@ -206,6 +209,8 @@ interface DescribeFace {
 
 interface CardProps {
   t: Translate;
+  namespace: string;
+  view?: "summary" | "page";
   scope: SettingsScope;
   describeFace: DescribeFace;
   credential: CredentialState;
@@ -255,12 +260,17 @@ interface NamespaceRow {
 }
 
 // 官方 settingsScope 镜像行的投影
-function rowOf(viewSnapshot: DescribeSnapshot): NamespaceRow | null {
+function rowOf(viewSnapshot: DescribeSnapshot, namespace: string): NamespaceRow | null {
   const namespaces = viewSnapshot?.view && Array.isArray(viewSnapshot.view.namespaces) ? viewSnapshot.view.namespaces : [];
-  return namespaces.find((candidate) => candidate.ns === NS) ?? null;
+  return namespaces.find((candidate) => candidate.ns === namespace) ?? null;
 }
 
 function LabnanaCard(props: CardProps) {
+  if (props.view === "summary") return <>{props.t("description")}</>;
+  return <LabnanaSettingsCard {...props} />;
+}
+
+function LabnanaSettingsCard(props: CardProps) {
   const t = props.t; // 官方 locale 席位（slot 注册声明 locale: NS 后由框架注入）
   const { scope, describeFace, credential, subscribeCredential, writeKey, unsetKey } = props;
   const [view, setView] = useState<DescribeSnapshot>(() => describeFace.getSnapshot());
@@ -285,7 +295,7 @@ function LabnanaCard(props: CardProps) {
   // 订阅凭据域状态（describe RPC / credentials/reference-updated 事件驱动）
   useEffect(() => subscribeCredential((state) => setCred({ ...state })), [subscribeCredential]);
 
-  const row = rowOf(view);
+  const row = rowOf(view, props.namespace);
   const value = (row && row.value) || {};
   const user = (row && row.user) || {};
   const loading = !view || !view.view;
@@ -420,7 +430,7 @@ function LabnanaCard(props: CardProps) {
           <span className="dshln-desc">{t("description")}</span>
         </span>
         {dirty ? <span className="dshln-badge">{t("unsaved")}</span> : null}
-        <IconChevronDownOutline14 className={"dshln-chevron" + (open ? " dshln-chevronOpen" : "")} />
+        <span aria-hidden="true" className={"dshln-chevron" + (open ? " dshln-chevronOpen" : "")}>⌄</span>
       </button>
       {open ? (
         <div className="dshln-body">
@@ -697,18 +707,29 @@ function LabnanaToolRow(props: ToolRowProps) {
   );
 }
 
-const inject = ["slots", "settingsScope", "remote", "remote.credentials", "locale"];
+const inject = ["slots", "remote", "remote.credentials", "locale"];
 
 function apply(ctx: any) {
   // 官方 locale：注册字典（ns × {zh, en}），slot 组件经框架注入的标准 t 席位取翻译
   ctx.effect(() => ctx.locale.register("labnana", { zh: I18N.zh, en: I18N.en }), "dsh-labnana: locale dictionary");
-  // 官方 settingsScope：绑定 labnana 命名空间的读写 scope + 共享镜像读面
-  const scope = ctx.settingsScope.bind({ namespace: NS }) as SettingsScope;
-  const describeFace = ctx.settingsScope.describe() as DescribeFace;
+  // dsh 0.1.7-rc switched from settingsScope to per-entry configForms.
+  // Use Cordis get() for optional services so a missing legacy or RC API does
+  // not leave the client plugin waiting on an injection that can never resolve.
+  const configForms = ctx.get("configForms", false);
+  const legacySettingsScope = ctx.get("settingsScope", false);
+  const useConfigForms = Boolean(configForms && typeof configForms.get === "function" && typeof configForms.whileServed === "function");
+  const settingsNamespace = useConfigForms ? CONFIG_FORM_NS : LEGACY_SETTINGS_NS;
+  const settingsApi = useConfigForms ? configForms : legacySettingsScope;
+  if (!settingsApi) {
+    ctx.logger?.warn?.("dsh-labnana: no supported client settings API is available");
+    return;
+  }
+  const scope = (useConfigForms ? configForms.get(settingsNamespace) : legacySettingsScope.bind({ namespace: settingsNamespace })) as SettingsScope;
+  const describeFace = (useConfigForms ? configForms.describe() : legacySettingsScope.describe()) as DescribeFace;
   // 官方凭据域（connection wire face）：密钥经 credentials 读写，不进入 settings
   const DEFAULT_API_KEY_REF = "LABNANA_API_KEY";
   const refOf = () => {
-    const row = rowOf(describeFace.getSnapshot());
+    const row = rowOf(describeFace.getSnapshot(), settingsNamespace);
     const declared = row && row.value && typeof row.value.apiKeyEnv === "string" ? row.value.apiKeyEnv : "";
     return declared.length > 0 ? declared : DEFAULT_API_KEY_REF;
   };
@@ -727,24 +748,39 @@ function apply(ctx: any) {
   const writeKey = credentials.write;
   const unsetKey = credentials.clear;
   // t 由框架注入（注册声明 locale 后随 props 传入），不在 cardProps 里覆盖
-  const cardProps: Omit<CardProps, "t"> = { scope, describeFace, credential: credentialStore, subscribeCredential, writeKey, unsetKey };
+  const cardProps: Omit<CardProps, "t" | "view"> = { namespace: settingsNamespace, scope, describeFace, credential: credentialStore, subscribeCredential, writeKey, unsetKey };
 
-  // 挂官方插槽 settings.plugin.item（设置 → 插件 → 可配置标签页）
-  // t 不放进 cardProps：注册声明 locale: "labnana" 后框架会注入翻译席位，
-  // 若在这里塞入桩函数会因展开顺序覆盖框架注入的 t，导致设置文字全部空白。
-  ctx.slots.inject("settings.plugin.item", () =>
-    ctx.slots.register(
-      {
-        name: "settings.plugin.item",
-        key: "labnana",
-        id: "dsh-labnana",
-        order: 130,
-        locale: "labnana",
-        inject: () => ({}),
-      },
-      (props: any) => <LabnanaCard {...props} {...cardProps} />
-    )
-  );
+  // Keep the old settings card on 0.1.2; 0.1.7-rc exposes settings through
+  // ConfigForms and renders a bundle's config on its package detail page.
+  if (useConfigForms) {
+    ctx.effect(() => configForms.whileServed([settingsNamespace], () =>
+      ctx.slots.inject("plugins.bundle.config", () =>
+        ctx.slots.register(
+          {
+            name: "plugins.bundle.config",
+            key: "dsh-labnana",
+            locale: NS,
+            inject: () => ({}),
+          },
+          (props: any) => <LabnanaCard {...props} {...cardProps} />
+        )
+      )
+    ), "dsh-labnana: config form page");
+  } else {
+    ctx.effect(() => ctx.slots.inject("settings.plugin.item", () =>
+      ctx.slots.register(
+        {
+          name: "settings.plugin.item",
+          key: "labnana",
+          id: "dsh-labnana",
+          order: 130,
+          locale: NS,
+          inject: () => ({}),
+        },
+        (props: any) => <LabnanaCard {...props} {...cardProps} />
+      )
+    ), "dsh-labnana: legacy settings card");
+  }
   // 对话流内生图结果卡片（官方 ui-tool 的 keyed tool.call.toolview 槽，key=工具名）
   ctx.slots.inject("tool.call.toolview", () =>
     ctx.slots.register(
