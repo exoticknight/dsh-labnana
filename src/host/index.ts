@@ -11,6 +11,7 @@ import z from "@deepseek-ai/schemastery";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 
 //#region 常量
 const BASE_URL = "https://api.labnana.com";
@@ -68,23 +69,45 @@ const EXT_MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", 
 //#endregion
 
 //#region 工具函数
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// 带超时的 fetch（返回 Response）
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+// 带超时和调用方取消信号的 fetch；消费响应体期间仍维持超时与取消监听。
+async function fetchWithTimeout<T>(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  consume: (response: Response) => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  signal?.throwIfAborted();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: controller.signal });
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const value = await consume(response);
+    signal?.throwIfAborted();
+    if (timedOut) throw new Error("request timed out");
+    return value;
+  } catch (error: any) {
+    if (signal?.aborted) throw signal.reason ?? error;
+    if (timedOut) {
+      const timeout = new Error(`labnana: request timed out after ${Math.round(timeoutMs / 1000)}s`) as Error & { code: string };
+      timeout.code = "TIMEOUT";
+      throw timeout;
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
 // 调用 Labnana API：非 2xx 统一解析 {code, message} 并抛带 code 的错误
-async function callApi(key: string, method: "GET" | "POST", apiPath: string, body: unknown, timeoutMs: number): Promise<any> {
+async function callApi(key: string, method: "GET" | "POST", apiPath: string, body: unknown, timeoutMs: number, signal?: AbortSignal): Promise<any> {
   const headers: Record<string, string> = { Authorization: `Bearer ${key}` };
   let init: RequestInit;
   if (method === "GET") {
@@ -93,10 +116,20 @@ async function callApi(key: string, method: "GET" | "POST", apiPath: string, bod
     headers["Content-Type"] = "application/json";
     init = { method, headers, body: JSON.stringify(body) };
   }
-  let response: Response;
+  let result: { response: Response; payload: any };
   try {
-    response = await fetchWithTimeout(`${BASE_URL}${apiPath}`, init, timeoutMs);
+    result = await fetchWithTimeout(`${BASE_URL}${apiPath}`, init, timeoutMs, async (response) => {
+      let payload: any = null;
+      try {
+        payload = await response.json();
+      } catch (error: any) {
+        if (error?.name === "AbortError") throw error;
+      }
+      return { response, payload };
+    }, signal);
   } catch (error: any) {
+    if (signal?.aborted) throw signal.reason ?? error;
+    if (error?.code === "TIMEOUT") throw error;
     if (error?.name === "AbortError") {
       const err = new Error(`labnana: request timed out after ${Math.round(timeoutMs / 1000)}s`);
       (err as any).code = "TIMEOUT";
@@ -106,10 +139,7 @@ async function callApi(key: string, method: "GET" | "POST", apiPath: string, bod
     (err as any).code = "NETWORK";
     throw err;
   }
-  let payload: any = null;
-  try {
-    payload = await response.json();
-  } catch {}
+  const { response, payload } = result;
   if (!response.ok || (payload && typeof payload.code === "number" && payload.code !== 0)) {
     const code = payload?.code ?? "HTTP";
     const message = payload?.message ?? `HTTP ${response.status}`;
@@ -266,10 +296,11 @@ function saveBase64Image(dir: string, data: string, mimeType: string): SavedImag
 }
 
 // 下载远程图片（异步任务产物）并保存
-async function downloadImage(dir: string, url: string, mimeType: string, timeoutMs: number): Promise<SavedImage> {
-  const response = await fetchWithTimeout(url, {}, timeoutMs);
-  if (!response.ok) throw new Error(`labnana: 下载生成图片失败 HTTP ${response.status}`);
-  const buffer = Buffer.from(await response.arrayBuffer());
+async function downloadImage(dir: string, url: string, mimeType: string, timeoutMs: number, signal?: AbortSignal): Promise<SavedImage> {
+  const buffer = await fetchWithTimeout(url, {}, timeoutMs, async (response) => {
+    if (!response.ok) throw new Error(`labnana: 下载生成图片失败 HTTP ${response.status}`);
+    return Buffer.from(await response.arrayBuffer());
+  }, signal);
   const ext = MIME_EXT[mimeType] ?? "png";
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, timestampName(ext));
@@ -328,14 +359,15 @@ function extractInlineImage(payload: any): { data: string; mimeType: string } | 
 }
 
 // 轮询异步任务直到成功/失败或超时；返回 { status, images, failMsg, createdAt, completedAt }
-async function pollTask(key: string, taskId: string, waitSeconds: number, timeoutMs: number): Promise<any> {
+async function pollTask(key: string, taskId: string, waitSeconds: number, timeoutMs: number, signal: AbortSignal): Promise<any> {
   const deadline = Date.now() + waitSeconds * 1000;
   let last: any = null;
   while (Date.now() < deadline) {
-    const data = await callApi(key, "GET", `${EP_TASKS}/${taskId}`, null, timeoutMs);
+    signal.throwIfAborted();
+    const data = await callApi(key, "GET", `${EP_TASKS}/${taskId}`, null, timeoutMs, signal);
     last = data;
     if (data?.status === "success" || data?.status === "fail") return data;
-    await sleep(3000);
+    await delay(3000, undefined, { signal });
   }
   const err = new Error(
     `labnana: 异步任务 ${taskId} 在 ${waitSeconds}s 内未完成（当前状态: ${last?.status ?? "unknown"}）。可用 labnana_get_task 工具继续查询 taskId=${taskId}`
@@ -420,8 +452,8 @@ interface SubscriptionSummary {
 }
 
 // 订阅/余额摘要（顶层，纯函数）
-async function subscriptionSummary(key: string): Promise<SubscriptionSummary> {
-  const data = await callApi(key, "GET", EP_SUBSCRIPTION, null, 20000);
+async function subscriptionSummary(key: string, signal?: AbortSignal): Promise<SubscriptionSummary> {
+  const data = await callApi(key, "GET", EP_SUBSCRIPTION, null, 20000, signal);
   if (!data) return {};
   const free: NonNullable<SubscriptionSummary["freeUsages"]> = [];
   const freeUsages = data.freeUsages ?? {};
@@ -500,6 +532,13 @@ function apply(ctx: Context, config: LabnanaConfig) {
   let current = () => config ?? {};
   const logger = ctx.logger;
 
+  ctx.effect(() => () => {
+    IN_MEMORY_IMAGES.clear();
+    SAVED_IMAGES.clear();
+    SAVED_WORKSPACES.clear();
+    SAVED_DIRS.clear();
+  }, "dsh-labnana: image state");
+
   // 刷新系统提示词（settings 变更时）
   let refreshPrompt: (() => void) | null = null;
 
@@ -532,7 +571,8 @@ function apply(ctx: Context, config: LabnanaConfig) {
   }
 
   // 生图主流程：4K（或 async=true）走异步任务 + 轮询；否则同步
-  async function generateImage(args: GenerateArgs, cfg: Partial<LabnanaConfig>, key: string, workspaceCwd: string): Promise<GenImageOut> {
+  async function generateImage(args: GenerateArgs, cfg: Partial<LabnanaConfig>, key: string, workspaceCwd: string, signal: AbortSignal): Promise<GenImageOut> {
+    signal.throwIfAborted();
     const payload = await buildPayload(args, cfg);
     const model = payload.model;
     const imageSize = payload.imageConfig.imageSize;
@@ -551,10 +591,10 @@ function apply(ctx: Context, config: LabnanaConfig) {
     let taskId: string | null = null;
 
     if (useAsync) {
-      const created = await callApi(key, "POST", EP_ASYNC, payload, timeoutMs);
+      const created = await callApi(key, "POST", EP_ASYNC, payload, timeoutMs, signal);
       taskId = created?.taskId;
       if (!taskId) throw new Error("labnana: 异步任务创建失败（未返回 taskId）");
-      const done = await pollTask(key, taskId, waitSeconds, timeoutMs);
+      const done = await pollTask(key, taskId, waitSeconds, timeoutMs, signal);
       if (done?.status !== "success") {
         throw new Error(`labnana: 异步任务失败（${done?.status}）${done?.failMsg ? `: ${done.failMsg}` : ""}`);
       }
@@ -563,16 +603,17 @@ function apply(ctx: Context, config: LabnanaConfig) {
       if (outputMode === "inline") {
         // inline：下载第一张并转 base64
         const first = images[0];
-        const response = await fetchWithTimeout(first.url, {}, timeoutMs);
-        if (!response.ok) throw new Error(`labnana: 下载图片失败 HTTP ${response.status}`);
-        const buf = Buffer.from(await response.arrayBuffer());
+        const buf = await fetchWithTimeout(first.url, {}, timeoutMs, async (response) => {
+          if (!response.ok) throw new Error(`labnana: 下载图片失败 HTTP ${response.status}`);
+          return Buffer.from(await response.arrayBuffer());
+        }, signal);
         result = {
           images: [{ data: buf.toString("base64"), mimeType: first.mimeType ?? "image/png", size: buf.length }],
         };
       } else if (persist) {
         const saved: Array<{ name?: string; path?: string; data?: string; mimeType: string; size: number }> = [];
         for (const img of images) {
-          const s = await downloadImage(dir, img.url, img.mimeType ?? "image/png", timeoutMs);
+          const s = await downloadImage(dir, img.url, img.mimeType ?? "image/png", timeoutMs, signal);
           saved.push({ ...s });
         }
         result = { images: saved };
@@ -580,9 +621,10 @@ function apply(ctx: Context, config: LabnanaConfig) {
         // 未保存模式：图片驻留内存，零落盘
         const saved: Array<{ name?: string; path?: string; data?: string; mimeType: string; size: number }> = [];
         for (const img of images) {
-          const response = await fetchWithTimeout(img.url, {}, timeoutMs);
-          if (!response.ok) throw new Error(`labnana: 下载图片失败 HTTP ${response.status}`);
-          const buf = Buffer.from(await response.arrayBuffer());
+          const buf = await fetchWithTimeout(img.url, {}, timeoutMs, async (response) => {
+            if (!response.ok) throw new Error(`labnana: 下载图片失败 HTTP ${response.status}`);
+            return Buffer.from(await response.arrayBuffer());
+          }, signal);
           const n = timestampName(MIME_EXT[img.mimeType ?? "image/png"] ?? "png");
           IN_MEMORY_IMAGES.set(n, { data: buf.toString("base64"), mimeType: img.mimeType ?? "image/png", size: buf.length });
           saved.push({ name: n, mimeType: img.mimeType ?? "image/png", size: buf.length });
@@ -590,7 +632,7 @@ function apply(ctx: Context, config: LabnanaConfig) {
         result = { images: saved };
       }
     } else {
-      const data = await callApi(key, "POST", EP_GENERATION, payload, timeoutMs);
+      const data = await callApi(key, "POST", EP_GENERATION, payload, timeoutMs, signal);
       const image = extractInlineImage(data);
       if (!image) {
         // 兼容：有些失败可能以 200 返回非图片结构
@@ -759,7 +801,7 @@ function apply(ctx: Context, config: LabnanaConfig) {
             },
             async execute(args, exec) {
               const key = requireKey(await resolveKeyAsync(ctx, current()));
-              return await generateImage(args, current(), key, sessionCwdOf(exec));
+              return await generateImage(args, current(), key, sessionCwdOf(exec), exec.signal);
             },
           })
         )
@@ -799,11 +841,11 @@ function apply(ctx: Context, config: LabnanaConfig) {
                 }];
               },
             },
-            async execute(args) {
+            async execute(args, exec) {
               const key = requireKey(await resolveKeyAsync(ctx, current()));
               const cfg = current();
               const payload = await buildPayload(args, cfg);
-              const data = await callApi(key, "POST", EP_ESTIMATE, payload, 30000);
+              const data = await callApi(key, "POST", EP_ESTIMATE, payload, 30000, exec.signal);
               const out: Record<string, unknown> = {
                 ok: true,
                 model: payload.model,
@@ -867,9 +909,9 @@ function apply(ctx: Context, config: LabnanaConfig) {
                 }];
               },
             },
-            async execute() {
+            async execute(_args, exec) {
               const key = requireKey(await resolveKeyAsync(ctx, current()));
-              const summary = await subscriptionSummary(key);
+              const summary = await subscriptionSummary(key, exec.signal);
               return { ok: true, ...summary };
             },
           })
@@ -915,11 +957,11 @@ function apply(ctx: Context, config: LabnanaConfig) {
                 }];
               },
             },
-            async execute(args) {
+            async execute(args, exec) {
               const key = requireKey(await resolveKeyAsync(ctx, current()));
               const taskId = String(args.taskId ?? "");
               if (!taskId) throw new Error("labnana: taskId is required");
-              const data = await callApi(key, "GET", `${EP_TASKS}/${taskId}`, null, 30000);
+              const data = await callApi(key, "GET", `${EP_TASKS}/${taskId}`, null, 30000, exec.signal);
               const out: Record<string, unknown> = { ok: true, taskId, status: data?.status ?? "unknown" };
               if (typeof data?.failMsg === "string" && data.failMsg.length > 0) out.failMsg = data.failMsg;
               if (Array.isArray(data?.images)) {
@@ -1032,77 +1074,88 @@ function apply(ctx: Context, config: LabnanaConfig) {
 
   ctx.inject(["webServer"], (sctx) => {
     const server = sctx as unknown as HttpServerContext;
-    server.webServer.register({
-      kind: "exact",
-      path: `${BRIDGE_PREFIX}/test`,
-      handler: async (req: any, res: any) => {
-        if (!guard(req, res)) return;
-        // Accept the unsaved form value for this request only. Empty legacy
-        // requests continue to test the stored credential.
-        const hasBody = req.headers["transfer-encoding"] || Number(req.headers["content-length"] ?? 0) > 0;
-        const body = hasBody ? await readJsonBody(req) : {};
-        if (!body || typeof body !== "object" || Array.isArray(body) ||
-            (body.apiKey !== undefined && typeof body.apiKey !== "string")) {
-          writeJson(res, 400, { ok: false, code: "bad-request", message: "malformed JSON body" });
-          return;
-        }
-        writeJson(res, 200, await testConnection(typeof body.apiKey === "string" ? body.apiKey.trim() : undefined));
-      },
-    });
-    // 手动保存：把未落盘图片复制到项目 labnana-images/（对话卡片"保存到项目"按钮）
-    server.webServer.register({
-      kind: "exact",
-      path: `${IMAGE_PREFIX}/save`,
-      handler: async (req: any, res: any) => {
-        if (!guard(req, res)) return;
-        const body = await readJsonBody(req);
-        if (body === undefined || typeof body?.name !== "string") {
-          writeJson(res, 400, { ok: false, code: "bad-request", message: "malformed JSON body" });
-          return;
-        }
-        writeJson(res, 200, await saveImageToProject(body.name));
-      },
-    });
-    // 图片服务：serve labnana 生成图（内存优先，磁盘兜底），供 toolview 卡片 <img> 加载
-    server.webServer.register({
-      kind: "prefix",
-      path: IMAGE_PREFIX,
-      handler: async (req: any, res: any) => {
-        const address = req.socket.remoteAddress;
-        if (address !== "127.0.0.1" && address !== "::1" && address !== "::ffff:127.0.0.1") {
-          writeJson(res, 403, { error: "forbidden" });
-          return;
-        }
-        try {
-          const url = new URL(req.url ?? "/", "http://x");
-          const rest = decodeURIComponent(url.pathname.slice(IMAGE_PREFIX.length + 1));
-          const name = path.basename(rest);
-          if (!name || name === "." || name === "..") {
-            writeJson(res, 400, { error: "bad file" });
-            return;
-          }
-          // 1) 内存驻留图（未保存模式，零落盘）
-          const mem = IN_MEMORY_IMAGES.get(name);
-          if (mem) {
-            res.writeHead(200, { "content-type": mem.mimeType, "cache-control": "max-age=3600" });
-            res.end(Buffer.from(mem.data, "base64"));
-            return;
-          }
-          // 2) 磁盘文件（保存过的图 / 历史图）
-          const abs = SAVED_IMAGES.get(name) ?? findSavedImage(name, current(), workspaceImageDirs(ctx));
-          if (!abs || !fs.existsSync(abs)) {
-            writeJson(res, 404, { error: "not found" });
-            return;
-          }
-          const mime = EXT_MIME[path.extname(name).slice(1).toLowerCase()] ?? "application/octet-stream";
-          res.writeHead(200, { "content-type": mime, "cache-control": "max-age=3600" });
-          fs.createReadStream(abs).pipe(res);
-        } catch {
-          writeJson(res, 500, { error: "internal" });
-        }
-      },
-    });
-    return () => {};
+    sctx.effect(() => {
+      const disposers: Array<() => void> = [];
+      const disposeRoutes = () => {
+        for (const dispose of disposers.splice(0).reverse()) dispose();
+      };
+      try {
+        disposers.push(server.webServer.register({
+          kind: "exact",
+          path: `${BRIDGE_PREFIX}/test`,
+          handler: async (req: any, res: any) => {
+            if (!guard(req, res)) return;
+            // Accept the unsaved form value for this request only. Empty legacy
+            // requests continue to test the stored credential.
+            const hasBody = req.headers["transfer-encoding"] || Number(req.headers["content-length"] ?? 0) > 0;
+            const body = hasBody ? await readJsonBody(req) : {};
+            if (!body || typeof body !== "object" || Array.isArray(body) ||
+                (body.apiKey !== undefined && typeof body.apiKey !== "string")) {
+              writeJson(res, 400, { ok: false, code: "bad-request", message: "malformed JSON body" });
+              return;
+            }
+            writeJson(res, 200, await testConnection(typeof body.apiKey === "string" ? body.apiKey.trim() : undefined));
+          },
+        }));
+        // 手动保存：把未落盘图片复制到项目 labnana-images/（对话卡片"保存到项目"按钮）
+        disposers.push(server.webServer.register({
+          kind: "exact",
+          path: `${IMAGE_PREFIX}/save`,
+          handler: async (req: any, res: any) => {
+            if (!guard(req, res)) return;
+            const body = await readJsonBody(req);
+            if (body === undefined || typeof body?.name !== "string") {
+              writeJson(res, 400, { ok: false, code: "bad-request", message: "malformed JSON body" });
+              return;
+            }
+            writeJson(res, 200, await saveImageToProject(body.name));
+          },
+        }));
+        // 图片服务：serve labnana 生成图（内存优先，磁盘兜底），供 toolview 卡片 <img> 加载
+        disposers.push(server.webServer.register({
+          kind: "prefix",
+          path: IMAGE_PREFIX,
+          handler: async (req: any, res: any) => {
+            const address = req.socket.remoteAddress;
+            if (address !== "127.0.0.1" && address !== "::1" && address !== "::ffff:127.0.0.1") {
+              writeJson(res, 403, { error: "forbidden" });
+              return;
+            }
+            try {
+              const url = new URL(req.url ?? "/", "http://x");
+              const rest = decodeURIComponent(url.pathname.slice(IMAGE_PREFIX.length + 1));
+              const name = path.basename(rest);
+              if (!name || name === "." || name === "..") {
+                writeJson(res, 400, { error: "bad file" });
+                return;
+              }
+              // 1) 内存驻留图（未保存模式，零落盘）
+              const mem = IN_MEMORY_IMAGES.get(name);
+              if (mem) {
+                res.writeHead(200, { "content-type": mem.mimeType, "cache-control": "max-age=3600" });
+                res.end(Buffer.from(mem.data, "base64"));
+                return;
+              }
+              // 2) 磁盘文件（保存过的图 / 历史图）
+              const abs = SAVED_IMAGES.get(name) ?? findSavedImage(name, current(), workspaceImageDirs(ctx));
+              if (!abs || !fs.existsSync(abs)) {
+                writeJson(res, 404, { error: "not found" });
+                return;
+              }
+              const mime = EXT_MIME[path.extname(name).slice(1).toLowerCase()] ?? "application/octet-stream";
+              res.writeHead(200, { "content-type": mime, "cache-control": "max-age=3600" });
+              fs.createReadStream(abs).pipe(res);
+            } catch {
+              writeJson(res, 500, { error: "internal" });
+            }
+          },
+        }));
+      } catch (error) {
+        disposeRoutes();
+        throw error;
+      }
+      return disposeRoutes;
+    }, "dsh-labnana: web routes");
   });
   //#endregion
 

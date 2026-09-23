@@ -50,8 +50,8 @@
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-settings": ">=0.1.2-rc.1",
-    "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1"
+    "@deepseek-ai/dsh-settings": ">=0.1.2-rc.1 || >=0.1.7-alpha.2",
+    "@deepseek-ai/dsh-tools": ">=0.1.2-rc.1 || >=0.1.7-alpha.2"
   },
   "dsh": {
     "bundle": {
