@@ -15,7 +15,7 @@ DeepSeek Harness (dsh) 插件：在会话里直接生成图片 —— 集成 [La
 
 ## 快速开始
 
-要求 DeepSeek Harness **0.1.2-rc.1 及以上版本**。
+最低兼容基线为 DeepSeek Harness **0.1.2-rc.1**；同时支持 **0.1.7 预发行 API**，相关 `@deepseek-ai/dsh-settings` 与 `@deepseek-ai/dsh-tools` 从 `0.1.7-alpha.2` 起兼容。本机已在 DSH `0.1.7-rc.1` 验证。
 
 ```sh
 # 1. 安装插件（推荐 npm）
@@ -30,7 +30,12 @@ dsh plugin --profile web add github:exoticknight/dsh-labnana
 
 **3. 配置 API Key**（Key 在 https://labnana.com/api-keys 创建）：
 
-打开 **设置 → 插件 → 可配置 → Labnana**，填入 API Key 并保存 —— 密钥写入凭据域 `~/.dsh/.credentials.yaml`，设置文件只存引用，界面只显示脱敏预览。
+进入对应的插件设置页：
+
+- **DSH 1.7 RC**：打开 **插件 → 已安装 → dsh-labnana**，设置表单直接显示在插件详情页。
+- **旧版 DSH**：打开 **设置 → 插件 → 可配置 → Labnana**。
+
+填入 API Key 并保存 —— 密钥写入凭据域 `~/.dsh/.credentials.yaml`，设置文件只存引用，界面只显示脱敏预览。
 
 **4. 在对话里说：**
 
@@ -50,7 +55,7 @@ dsh plugin --profile web add github:exoticknight/dsh-labnana
   | `labnana_get_subscription` | 积分余额 / 免费额度 / 套餐 |
   | `labnana_get_task` | 按 taskId 查询异步任务（4K / 超时兜底） |
 - **对话内图片卡片**：生成结果直接显示（网格 + 点击放大 + 「打开文件」+ 未落盘时「保存到项目」按钮），历史会话回放同样可见
-- **网页设置**：官方 `settingsScope` 读写、凭据域存 Key、打开自动测试连接显示余额、默认模型/尺寸/比例/输出目录、「保存图片到磁盘」开关；文案中英跟随系统语言
+- **网页设置**：DSH 1.7 RC 在插件详情页直接显示设置表单；旧版保留原插件设置入口。API Key 存在凭据域，支持连接测试与余额查看、默认模型/尺寸/比例/输出目录和「保存图片到磁盘」开关；文案中英跟随系统语言
 - **系统提示注入**：模型知道工具用法、模型-积分表、尺寸/比例/参考图限制、免费额度规则、错误码与重试建议
 
 ## 配置
@@ -59,7 +64,7 @@ dsh plugin --profile web add github:exoticknight/dsh-labnana
 
 三种方式，任选其一：
 
-1. **设置页**：设置 → 插件 → 可配置 → Labnana → 填 Key → 保存
+1. **设置页**：DSH 1.7 RC 打开 插件 → 已安装 → dsh-labnana；旧版打开 设置 → 插件 → 可配置 → Labnana。填 Key 后保存
 2. **环境变量**：`LABNANA_API_KEY=lh_xxxxx`（dsh 启动前设置；进程环境提供的凭据只读）
 3. **直接写文件**：
 
@@ -157,9 +162,9 @@ npm run build      # esbuild：
 
 ### 架构：dsh 插件双半侧
 
-- **Host**（Node）：标准 cordis 插件 `export { name, inject, Config, apply }`；工具用官方 `defineTool`（类型化 schema + `execute` + `presentationMeta`）；settings 用 `installSettingsSection`；HTTP 端点用 `ctx.webServer`（loopback 保护）
-- **Client**（浏览器）：`dsh.client` 声明 + `exports["./client"]` → dsh-client-modules 服务 `/plugins/<id>/client.js`；产物必须是 lazy-CJS factory（react / react/jsx-runtime 走注入 require）
-- **官方扩展点使用清单**：`ctx.settingsScope`（设置读写，revision 栅）· `api.credentials`（密钥读写，`credentials/reference-updated` 事件）· `ctx.locale`（i18n 字典 + slot `locale` 席位）· `tool.call.toolview` keyed 槽（对话图片卡片）· `exec.agent.session.header.cwd`（保存目录基准）· `workspaceRegistry`（图片服务跨 workspace 查找）
+- **Host**（Node）：标准 cordis 插件 `export { name, inject, Config, apply }`；工具用官方 `defineTool`（类型化 schema + `execute` + `presentationMeta`）；旧版 settings provider 使用 `installSection`，DSH 1.7 RC 通过 `configure({ auto: false })` 管理原生设置页策略，并监听 `settings/document-updated` 刷新系统提示；HTTP 端点用 `ctx.webServer`（loopback 保护）
+- **Client**（浏览器）：`dsh.client` 声明 + `exports["./client"]` → dsh-client-modules 服务 `/plugins/<id>/client.js`；产物必须是 lazy-CJS factory（react / react/jsx-runtime 走注入 require）。旧版通过 `settingsScope` + `settings.plugin.item` 提供设置卡片；DSH 1.7 RC 通过 `configForms` + `plugins.bundle.config` 在插件详情页展示配置
+- **官方扩展点使用清单**：`ctx.inject(["settings"])`（Host 设置服务）· `ctx.get("settingsScope")`（旧版 Client 设置）/ `ctx.get("configForms")`（1.7 RC Client 设置）· `ctx.remote.credentials`（密钥读写，`credentials/reference-updated` 事件）· `ctx.locale`（i18n 字典 + slot `locale` 席位）· `tool.call.toolview` keyed 槽（对话图片卡片）· `exec.agent.session.header.cwd`（保存目录基准）· `workspaceRegistry`（图片服务跨 workspace 查找）
 
 ### 工具定义（模型视角）
 
