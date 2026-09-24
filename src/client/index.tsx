@@ -23,6 +23,10 @@ const css = [
   ".dshln-version{color:var(--dsw-alias-label-tertiary);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}",
   ".dshln-balance{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.7;display:flex;flex-direction:column;gap:2px;min-width:0}",
   ".dshln-balance b{color:var(--dsw-alias-label-primary);font-weight:600}",
+  ".dshln-pageForm{width:100%;min-width:0}",
+  ".dshln-pageForm .dshln-input:not([type=checkbox]){box-sizing:border-box;min-width:0;width:100%}",
+  ".dshln-pageBody{padding-bottom:8px}",
+  ".dshln-pageBody .dshln-footer{justify-content:flex-start}",
   ".dshln-tool{padding:2px 0}",
   ".dshln-toolHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}",
   ".dshln-toolTitle{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500}",
@@ -288,6 +292,8 @@ function LabnanaSettingsCard(props: CardProps) {
   const [saveToDisk, setSaveToDisk] = useState(false);
   const [outputDir, setOutputDir] = useState("");
   const [open, setOpen] = useState(false);
+  const page = props.view === "page";
+  const expanded = page || open;
   const autoTestedRef = useRef(false);
 
   // 订阅官方设置镜像（文档提交/重连时刷新；也覆盖本卡片写入后的回读）
@@ -331,11 +337,11 @@ function LabnanaSettingsCard(props: CardProps) {
 
   // 有 key 时自动测试一次连接，让状态一打开就可见
   useEffect(() => {
-    if (open && keyConfigured && !saving && !keyInput && !autoTestedRef.current) {
+    if (expanded && keyConfigured && !saving && !keyInput && !autoTestedRef.current) {
       autoTestedRef.current = true;
       test();
     }
-  }, [open, keyConfigured, saving, keyInput, test]);
+  }, [expanded, keyConfigured, saving, keyInput, test]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -413,27 +419,33 @@ function LabnanaSettingsCard(props: CardProps) {
     <span className="dshln-badgeKey">{t("apiKey")} · {keySrcLabel || t("keySrcCredentials")}{keyMasked ? " · " + keyMasked : ""}</span>
   );
 
+  const Root = page ? "div" : "li";
   return (
-    <li className={"dshln-card" + (open ? " dshln-cardOpen" : "")} style={{ listStyle: "none" }}>
-      <button
-        type="button"
-        className="dshln-cardHeader"
-        aria-expanded={open}
-        aria-label={(open ? t("collapse") : t("expand")) + ": " + t("title")}
-        onClick={() => setOpen(!open)}
-      >
-        <span className="dshln-cardHeadText">
-          <span className="dshln-cardTitle">
-            {t("title")}
-            <span className="dshln-version" style={{ marginLeft: 8 }}>{t("version")}{__LABNANA_VERSION__}</span>
+    <Root
+      className={page ? "dshln-pageForm" : "dshln-card" + (open ? " dshln-cardOpen" : "")}
+      style={page ? undefined : { listStyle: "none" }}
+    >
+      {!page ? (
+        <button
+          type="button"
+          className="dshln-cardHeader"
+          aria-expanded={open}
+          aria-label={(open ? t("collapse") : t("expand")) + ": " + t("title")}
+          onClick={() => setOpen(!open)}
+        >
+          <span className="dshln-cardHeadText">
+            <span className="dshln-cardTitle">
+              {t("title")}
+              <span className="dshln-version" style={{ marginLeft: 8 }}>{t("version")}{__LABNANA_VERSION__}</span>
+            </span>
+            <span className="dshln-desc">{t("description")}</span>
           </span>
-          <span className="dshln-desc">{t("description")}</span>
-        </span>
-        {dirty ? <span className="dshln-badge">{t("unsaved")}</span> : null}
-        <span aria-hidden="true" className={"dshln-chevron" + (open ? " dshln-chevronOpen" : "")}>⌄</span>
-      </button>
-      {open ? (
-        <div className="dshln-body">
+          {dirty ? <span className="dshln-badge">{t("unsaved")}</span> : null}
+          <span aria-hidden="true" className={"dshln-chevron" + (open ? " dshln-chevronOpen" : "")}>⌄</span>
+        </button>
+      ) : null}
+      {expanded ? (
+        <div className={page ? "dshln-pageBody" : "dshln-body"}>
           {loading ? (
           <p className="dshln-hint">{t("loading")}</p>
         ) : unavailable ? (
@@ -564,11 +576,13 @@ function LabnanaSettingsCard(props: CardProps) {
             </div>
             {saveError || cred.error ? <p role="alert" className="dshln-testFail">{t("saveFailed")} {saveError || cred.error}</p> : null}
             <div className="dshln-footer">
-              <span role="status" className="dshln-hint" style={{ marginRight: "auto" }}>{dirty ? t("unsaved") : saved ? t("saved") : ""}</span>
+              <span role="status" className="dshln-hint" style={{ marginRight: page ? 0 : "auto" }}>{dirty ? t("unsaved") : saved ? t("saved") : ""}</span>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="dshln-discardAction" type="button" onClick={discard} disabled={saving || testing || !dirty || !writable}>
-                  {t("discard")}
-                </button>
+                {!page ? (
+                  <button className="dshln-discardAction" type="button" onClick={discard} disabled={saving || testing || !dirty || !writable}>
+                    {t("discard")}
+                  </button>
+                ) : null}
                 <button className="dshln-saveAction" type="button" onClick={save} disabled={saving || testing || !dirty || !writable}>
                   {saving ? t("saving") : t("save")}
                 </button>
@@ -578,7 +592,7 @@ function LabnanaSettingsCard(props: CardProps) {
         )}
         </div>
       ) : null}
-    </li>
+    </Root>
   );
 }
 
