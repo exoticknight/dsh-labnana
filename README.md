@@ -5,7 +5,7 @@
 </p>
 
 [![npm](https://img.shields.io/npm/v/dsh-labnana?logo=npm)](https://www.npmjs.com/package/dsh-labnana) [![CI](https://img.shields.io/github/actions/workflow/status/exoticknight/dsh-labnana/ci.yml?branch=main)](https://github.com/exoticknight/dsh-labnana/actions) [![Release downloads](https://img.shields.io/github/downloads/exoticknight/dsh-labnana/total?label=release%20downloads)](https://github.com/exoticknight/dsh-labnana/releases) [![License](https://img.shields.io/github/license/exoticknight/dsh-labnana)](LICENSE) [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://github.com/exoticknight/dsh-labnana)
-[![dsh plugin](https://img.shields.io/github/v/release/exoticknight/dsh-labnana?display_name=tag&sort=semver&label=dsh%20plugin&color=4b32c3)](https://github.com/exoticknight/dsh-labnana/releases/latest) [![dsh.pub registry status](https://dsh.pub/api/badges/exoticknight/dsh-labnana.svg)](https://dsh.pub/en/plugins/?q=exoticknight%2Fdsh-labnana)
+[![dsh plugin](https://img.shields.io/github/v/release/exoticknight/dsh-labnana?display_name=tag&sort=semver&label=dsh%20plugin&color=4b32c3)](https://github.com/exoticknight/dsh-labnana/releases/latest) [![dsh.pub registry status](https://dsh.pub/api/badges/exoticknight/dsh-labnana.svg)](https://dsh.pub/en/plugins/?q=exoticknight%2Fdsh-labnana) [![dshfind](https://dshfind.com/api/badge/exoticknight/dsh-labnana)](https://dshfind.com/en/plugins/exoticknight/dsh-labnana?ref=badge)
 
 DeepSeek Harness (dsh) 插件：在会话里直接生成图片 —— 集成 [Labnana](https://labnana.com) 图片生成 OpenAPI，文生图 / 图生图 / 精准编辑，生成结果直接在对话流显示，可一键保存到当前项目。
 
