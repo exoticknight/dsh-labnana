@@ -15,7 +15,7 @@ DeepSeek Harness (dsh) 插件：在会话里直接生成图片 —— 集成 [La
 
 ## 快速开始
 
-最低兼容基线为 DeepSeek Harness **0.1.2-rc.1**；同时支持 **0.1.7 预发行 API**，相关 `@deepseek-ai/dsh-settings` 与 `@deepseek-ai/dsh-tools` 从 `0.1.7-alpha.2` 起兼容。本机已在 DSH `0.1.7-rc.1` 验证。
+最低兼容基线为 DeepSeek Harness **0.1.2-rc.1**；同时支持 **0.1.7 预发行 API**，相关 `@deepseek-ai/dsh-settings` 与 `@deepseek-ai/dsh-tools` 从 `0.1.7-alpha.2` 起兼容。本机已在 DSH `0.1.7-rc.1` 和 `0.2.0-rc.2` 验证。
 
 ```sh
 # 1. 安装插件（推荐 npm）
