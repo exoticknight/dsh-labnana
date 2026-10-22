@@ -20,7 +20,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check": "npm run typecheck && npm run build && node scripts/check-settings.mjs && node scripts/check-connection.mjs && node scripts/check-client-settings.mjs"
+    "check": "npm run typecheck && npm run build && node scripts/check-settings.mjs && node scripts/check-connection.mjs && node scripts/check-client-settings.mjs && node scripts/check-version-notice.mjs"
   },
   "keywords": [
     "deepseek-harness",
