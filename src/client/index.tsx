@@ -32,8 +32,7 @@ const css = [
   ".dshln-versionNoticeTitle{margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:1.5}",
   ".dshln-versionNoticeText{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5}",
   ".dshln-versionNoticeLink{display:inline-block;margin-top:5px;color:var(--dsw-alias-state-business-primary);font-size:12px;line-height:1.5}",
-  ".dshln-versionNoticeClose{position:absolute;top:6px;right:7px;width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:18px;line-height:1;cursor:pointer}",
-  ".dshln-versionNoticeClose:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}",
+  ".dshln-versionNoticeClose{position:absolute;top:6px;right:7px;width:28px;height:28px;padding:0;color:var(--dsw-alias-label-secondary);font-size:18px;line-height:1}",
   ".dshln-tool{padding:2px 0}",
   ".dshln-toolHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}",
   ".dshln-toolTitle{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500}",
@@ -307,7 +306,7 @@ function VersionNotice({ kind, t, onDismiss }: { kind: VersionNoticeKind; t: Tra
     : t("versionInstalledTitle") + __LABNANA_VERSION__ + t("versionInstalledSuffix");
   return (
     <div className="dshln-versionNotice" role="status" aria-live="polite">
-      <button className="dshln-versionNoticeClose" type="button" aria-label={t("versionNoticeDismiss")} onClick={onDismiss}>×</button>
+      <Button className="dshln-versionNoticeClose" variant="ghost" size="sm" type="button" aria-label={t("versionNoticeDismiss")} onClick={onDismiss}>×</Button>
       <p className="dshln-versionNoticeTitle">{title}</p>
       <p className="dshln-versionNoticeText">{t("versionNoticeText")}</p>
       <a className="dshln-versionNoticeLink" href="https://github.com/exoticknight/dsh-labnana/releases" target="_blank" rel="noopener noreferrer">
