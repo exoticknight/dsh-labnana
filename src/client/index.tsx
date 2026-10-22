@@ -33,8 +33,8 @@ const css = [
   ".dshln-toolMeta{color:var(--dsw-alias-label-secondary);font-size:12px}",
   ".dshln-toolBadge{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-state-business-primary);white-space:nowrap;border-radius:999px;flex:none;padding:1px 6px;font-size:11px}",
   ".dshln-toolGrid{display:flex;flex-wrap:wrap;gap:8px}",
-  ".dshln-toolImg{border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);object-fit:contain;cursor:zoom-in;max-width:100%}",
-  ".dshln-toolImgSingle{width:100%}",
+  ".dshln-toolImg{display:block;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);object-fit:contain;cursor:zoom-in;max-width:100%;max-height:320px;height:auto}",
+  ".dshln-toolImgSingle{width:auto}",
   ".dshln-toolImgMulti{width:calc(50% - 4px);min-width:160px}",
   ".dshln-toolActions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}",
   ".dshln-toolLink{border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:transparent;cursor:pointer;border-radius:6px;padding:3px 10px;font-size:12px;font:inherit}",
@@ -63,6 +63,8 @@ const MODELS = [
   "gemini-3-pro-image",
   "gemini-3.1-flash-image",
   "gpt-image-2",
+  "gpt-image-2.5-flare",
+  "gpt-image-2.5-sunburst",
   "wan2.7-image-pro",
   "wan2.7-image",
   "seedream-5-0-pro",
@@ -70,13 +72,17 @@ const MODELS = [
 const SIZES = ["1K", "2K", "4K"];
 const sizesFor = (model: string) => model === "wan2.7-image" || model === "seedream-5-0-pro" ? SIZES.slice(0, 2) : SIZES;
 const RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9", "1:4", "4:1", "1:8", "8:1"];
+const GPT_IMAGE_25_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
+const ratiosFor = (model: string) => model.startsWith("gpt-image-2.5-") ? GPT_IMAGE_25_RATIOS : RATIOS;
 
 // 官方 locale 字典：ns × { zh, en }
 const I18N = {
   zh: {
     title: "Labnana 图片生成",
     saved: "已保存",
-    description: "Labnana 图片生成 —— 文生图 / 图生图 / 精准编辑（Gemini · GPT-Image-2 · Wan2.7 · Seedream）",
+    description: "Labnana 图片生成 —— 文生图 / 图生图 / 精准编辑（Gemini · GPT-Image-2 / 2.5 · Wan2.7 · Seedream）",
+    modelFlare: "Flare（速度优先）",
+    modelSunburst: "Sunburst（细节优先）",
     expand: "展开设置",
     collapse: "收起设置",
     apiKey: "API Key",
@@ -133,7 +139,9 @@ const I18N = {
   en: {
     title: "Labnana image generation",
     saved: "Saved",
-    description: "Labnana image generation — text-to-image / image-to-image / precise editing (Gemini · GPT-Image-2 · Wan2.7 · Seedream)",
+    description: "Labnana image generation — text-to-image / image-to-image / precise editing (Gemini · GPT-Image-2 / 2.5 · Wan2.7 · Seedream)",
+    modelFlare: "Flare (speed-oriented)",
+    modelSunburst: "Sunburst (detail-oriented)",
     expand: "Show settings",
     collapse: "Hide settings",
     apiKey: "API Key",
@@ -313,9 +321,11 @@ function LabnanaSettingsCard(props: CardProps) {
   // 后台镜像刷新时保留尚未保存的输入。
   useEffect(() => {
     if (!row || dirty) return;
-    setModel(typeof value.defaultModel === "string" ? value.defaultModel : "gemini-3-pro-image");
+    const storedModel = typeof value.defaultModel === "string" ? value.defaultModel : "gemini-3-pro-image";
+    setModel(storedModel);
     setSize(typeof value.defaultImageSize === "string" ? value.defaultImageSize : "2K");
-    setRatio(typeof value.defaultAspectRatio === "string" ? value.defaultAspectRatio : "1:1");
+    const storedRatio = typeof value.defaultAspectRatio === "string" ? value.defaultAspectRatio : "1:1";
+    setRatio(ratiosFor(storedModel).includes(storedRatio) ? storedRatio : "1:1");
     setSaveToDisk(value.saveToDisk === true);
     setOutputDir(typeof value.outputDir === "string" ? value.outputDir : "");
     setKeyInput("");
@@ -380,9 +390,11 @@ function LabnanaSettingsCard(props: CardProps) {
 
   const discard = useCallback(() => {
     if (!row) return;
-    setModel(typeof value.defaultModel === "string" ? value.defaultModel : "gemini-3-pro-image");
+    const storedModel = typeof value.defaultModel === "string" ? value.defaultModel : "gemini-3-pro-image";
+    setModel(storedModel);
     setSize(typeof value.defaultImageSize === "string" ? value.defaultImageSize : "2K");
-    setRatio(typeof value.defaultAspectRatio === "string" ? value.defaultAspectRatio : "1:1");
+    const storedRatio = typeof value.defaultAspectRatio === "string" ? value.defaultAspectRatio : "1:1";
+    setRatio(ratiosFor(storedModel).includes(storedRatio) ? storedRatio : "1:1");
     setSaveToDisk(value.saveToDisk === true);
     setOutputDir(typeof value.outputDir === "string" ? value.outputDir : "");
     setKeyInput("");
@@ -521,9 +533,9 @@ function LabnanaSettingsCard(props: CardProps) {
             <>
               <div className="dshln-field">
                 <label className="dshln-label">{t("defaultModel")}</label>
-                <select aria-label={t("defaultModel")} className="dshln-input" value={model} disabled={saving || testing || !writable} onChange={(e) => { setModel(e.target.value); if (!sizesFor(e.target.value).includes(size)) setSize("2K"); mark(); }}>
+                <select aria-label={t("defaultModel")} className="dshln-input" value={model} disabled={saving || testing || !writable} onChange={(e) => { const nextModel = e.target.value; setModel(nextModel); if (!sizesFor(nextModel).includes(size)) setSize("2K"); if (!ratiosFor(nextModel).includes(ratio)) setRatio("1:1"); mark(); }}>
                   {MODELS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                    <option key={m} value={m}>{m === "gpt-image-2.5-flare" ? `${m} — ${t("modelFlare")}` : m === "gpt-image-2.5-sunburst" ? `${m} — ${t("modelSunburst")}` : m}</option>
                   ))}
                 </select>
               </div>
@@ -538,7 +550,7 @@ function LabnanaSettingsCard(props: CardProps) {
               <div className="dshln-field">
                 <label className="dshln-label">{t("defaultRatio")}</label>
                 <select aria-label={t("defaultRatio")} className="dshln-input" value={ratio} disabled={saving || testing || !writable} onChange={(e) => { setRatio(e.target.value); mark(); }}>
-                  {RATIOS.map((r) => (
+                  {ratiosFor(model).map((r) => (
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>

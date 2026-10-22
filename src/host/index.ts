@@ -42,14 +42,18 @@ interface ModelMeta {
   credits: Partial<Record<"1K" | "2K" | "4K", number>>;
   maxRef: number;
   sizes: string[];
+  aspectRatios?: string[];
   refNo4k?: true;
 }
 
 // 模型元数据：provider 映射、积分（1K/2K/4K）、参考图上限、可用尺寸
+const GPT_IMAGE_25_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
 const MODELS: Record<string, ModelMeta> = {
   "gemini-3-pro-image": { provider: "google", credits: { "1K": 15, "2K": 15, "4K": 30 }, maxRef: 14, sizes: ["1K", "2K", "4K"] },
   "gemini-3.1-flash-image": { provider: "google", credits: { "1K": 10, "2K": 10, "4K": 20 }, maxRef: 14, sizes: ["1K", "2K", "4K"] },
   "gpt-image-2": { provider: "openai", credits: { "1K": 4, "2K": 6, "4K": 10 }, maxRef: 4, sizes: ["1K", "2K", "4K"] },
+  "gpt-image-2.5-flare": { provider: "openai", credits: {}, maxRef: 4, sizes: ["1K", "2K", "4K"], aspectRatios: GPT_IMAGE_25_RATIOS },
+  "gpt-image-2.5-sunburst": { provider: "openai", credits: {}, maxRef: 4, sizes: ["1K", "2K", "4K"], aspectRatios: GPT_IMAGE_25_RATIOS },
   "wan2.7-image-pro": { provider: "alibaba", credits: { "1K": 6, "2K": 8, "4K": 12 }, maxRef: 9, sizes: ["1K", "2K", "4K"], refNo4k: true },
   "wan2.7-image": { provider: "alibaba", credits: { "1K": 4, "2K": 6 }, maxRef: 9, sizes: ["1K", "2K"] },
   "seedream-5-0-pro": { provider: "bytedance", credits: { "1K": 6, "2K": 15 }, maxRef: 10, sizes: ["1K", "2K"] },
@@ -410,6 +414,9 @@ function buildPayload(args: GenerateArgs, cfg: Partial<LabnanaSettings>): Genera
     throw new Error(`labnana: 模型 ${model} 不支持 ${imageSize}，仅支持 ${meta.sizes.join(" / ")}`);
   }
   const aspectRatio = args.aspectRatio ?? cfg?.defaultAspectRatio ?? "1:1";
+  if (aspectRatio !== "auto" && meta.aspectRatios && !meta.aspectRatios.includes(aspectRatio)) {
+    throw new Error(`labnana: 模型 ${model} 不支持宽高比 ${aspectRatio}，仅支持 ${meta.aspectRatios.join(" / ")} 或 auto`);
+  }
   const payload: GeneratePayload = {
     provider: meta.provider,
     model,
@@ -656,14 +663,18 @@ function apply(ctx: Context, config: unknown) {
       const images = Array.isArray(done.images) ? done.images : [];
       if (images.length === 0) throw new Error("labnana: 任务成功但未返回图片");
       if (outputMode === "inline") {
-        // inline：下载第一张并转 base64
+        // inline：保留 base64 工具输出，同时驻留内存以供对话卡片预览/保存。
         const first = images[0];
         const buf = await fetchWithTimeout(first.url, {}, timeoutMs, async (response) => {
           if (!response.ok) throw new Error(`labnana: 下载图片失败 HTTP ${response.status}`);
           return Buffer.from(await response.arrayBuffer());
         }, signal);
+        const mimeType = first.mimeType ?? "image/png";
+        const name = timestampName(MIME_EXT[mimeType] ?? "png");
+        const data = buf.toString("base64");
+        IN_MEMORY_IMAGES.set(name, { data, mimeType, size: buf.length });
         result = {
-          images: [{ data: buf.toString("base64"), mimeType: first.mimeType ?? "image/png", size: buf.length }],
+          images: [{ data, name, mimeType, size: buf.length }],
         };
       } else if (persist) {
         const saved: Array<{ name?: string; path?: string; data?: string; mimeType: string; size: number }> = [];
@@ -694,7 +705,11 @@ function apply(ctx: Context, config: unknown) {
         throw new Error("labnana: 响应中未找到图片数据（请检查 prompt 与模型限制）");
       }
       if (outputMode === "inline") {
-        result = { images: [{ data: image.data, mimeType: image.mimeType, size: Math.floor(image.data.length * 0.75) }] };
+        // inline：保留 base64 工具输出，同时驻留内存以供对话卡片预览/保存。
+        const size = Math.floor(image.data.length * 0.75);
+        const name = timestampName(MIME_EXT[image.mimeType] ?? "png");
+        IN_MEMORY_IMAGES.set(name, { data: image.data, mimeType: image.mimeType, size });
+        result = { images: [{ data: image.data, name, mimeType: image.mimeType, size }] };
       } else if (persist) {
         const saved = saveBase64Image(dir, image.data, image.mimeType);
         result = { images: [{ ...saved }] };
@@ -759,15 +774,15 @@ function apply(ctx: Context, config: unknown) {
           defineTool({
             name: "labnana_generate_image",
             description:
-              "Generate an image via the Labnana API (text-to-image / image-to-image / precise editing). Supports models: gemini-3-pro-image (NanoBanana Pro), gemini-3.1-flash-image, gpt-image-2, wan2.7-image-pro, wan2.7-image, seedream-5-0-pro. Pass referenceImages for image-to-image or editing (url = remote image, filePath = local file, data = base64). 4K and async=true run as async tasks with internal polling. By default the image is NOT saved to disk (kept in memory only; the conversation card offers a 'save to project' button) unless the user enabled 'save to disk' in settings or you pass saveDir. Returns { ok, saved, images: [{url, path?, mimeType, size}], model, imageSize, aspectRatio, taskId? }.",
+              "Generate an image via the Labnana API (text-to-image / image-to-image / precise editing). Supports models: gemini-3-pro-image (NanoBanana Pro), gemini-3.1-flash-image, gpt-image-2, gpt-image-2.5-flare (speed-oriented), gpt-image-2.5-sunburst (detail-oriented), wan2.7-image-pro, wan2.7-image, seedream-5-0-pro. Pass referenceImages for image-to-image or editing (url = remote image, filePath = local file, data = base64). 4K and async=true run as async tasks with internal polling. By default the image is NOT saved to disk (kept in memory only; the conversation card offers a 'save to project' button) unless the user enabled 'save to disk' in settings or you pass saveDir. Returns { ok, saved, images: [{url, path?, mimeType, size}], model, imageSize, aspectRatio, taskId? }.",
             parameters: {
               prompt: { type: "string", required: true, description: "Image generation prompt (Chinese or English). For Seedream precise editing, describe the region (absolute pixel coords from top-left) and the change." },
-              model: { type: "string", description: "Model id (default: gemini-3-pro-image). gemini-3-pro-image / gemini-3.1-flash-image / gpt-image-2 / wan2.7-image-pro / wan2.7-image / seedream-5-0-pro" },
+              model: { type: "string", description: "Model id (default: gemini-3-pro-image). Options: gemini-3-pro-image / gemini-3.1-flash-image / gpt-image-2 / gpt-image-2.5-flare (speed) / gpt-image-2.5-sunburst (detail) / wan2.7-image-pro / wan2.7-image / seedream-5-0-pro" },
               imageSize: { type: "string", description: "1K | 2K | 4K (default 2K; wan2.7-image and seedream-5-0-pro do not support 4K)" },
-              aspectRatio: { type: "string", description: "One of 1:1 2:3 3:2 3:4 4:3 9:16 16:9 21:9 1:4 4:1 1:8 8:1, or 'auto' to let the model choose (default 1:1)" },
+              aspectRatio: { type: "string", description: "GPT-Image-2.5: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9. Other models: 1:1, 2:3, 3:2, 3:4, 4:3, 9:16, 16:9, 21:9, 1:4, 4:1, 1:8, 8:1. Use 'auto' to omit the ratio (default 1:1)." },
               referenceImages: {
                 type: "array",
-                description: "Optional reference images for image-to-image / editing. Each item: { url } (remote https/gs URL + optional mimeType), { filePath } (local file), or { data, mimeType } (base64). Limits: Gemini 14, GPT-Image-2 4, Wan2.7 9, Seedream 10.",
+                description: "Optional reference images for image-to-image / editing. Each item: { url } (remote https/gs URL + optional mimeType), { filePath } (local file), or { data, mimeType } (base64). Limits: Gemini 14, GPT-Image-2 and GPT-Image-2.5 4, Wan2.7 9, Seedream 10.",
                 items: { type: "json" },
               },
               outputMode: { type: "string", description: "'file' (default) saves to disk; 'inline' returns base64 data." },
@@ -867,12 +882,17 @@ function apply(ctx: Context, config: unknown) {
           defineTool({
             name: "labnana_estimate_credits",
             description:
-              "Estimate how many Labnana credits a generation would cost WITHOUT generating the image or spending credits. Returns credits, canGenerate, requiresSubscription, pricing and warnings.",
+              "Estimate how many Labnana credits a generation would cost WITHOUT generating the image or spending credits. Supports gpt-image-2.5-flare and gpt-image-2.5-sunburst (same price; Flare is speed-oriented, Sunburst detail-oriented). Their exact cost is returned by this live estimate. Returns credits, canGenerate, requiresSubscription, pricing and warnings.",
             parameters: {
               prompt: { type: "string", required: true, description: "The prompt you plan to use (length can affect pricing)." },
-              model: { type: "string", description: "Model id (default: gemini-3-pro-image)." },
+              model: { type: "string", description: "Model id (default: gemini-3-pro-image), including gpt-image-2.5-flare or gpt-image-2.5-sunburst." },
               imageSize: { type: "string", description: "1K | 2K | 4K (default 2K)." },
               aspectRatio: { type: "string", description: "Aspect ratio (default 1:1)." },
+              referenceImages: {
+                type: "array",
+                description: "Optional references for an accurate estimate; each item accepts { url }, { filePath }, or { data, mimeType }. Limits: Gemini 14, GPT-Image-2 and GPT-Image-2.5 4, Wan2.7 9, Seedream 10.",
+                items: { type: "json" },
+              },
             },
             output: {
               schema: {
@@ -1245,13 +1265,15 @@ function apply(ctx: Context, config: unknown) {
           "- gemini-3-pro-image (NanoBanana Pro): 15/15/30, up to 14 reference images",
           "- gemini-3.1-flash-image: 10/10/20, up to 14 reference images",
           "- gpt-image-2: 4/6/10, up to 4 reference images",
+          "- gpt-image-2.5-flare: speed-oriented, up to 4 reference images; same price as Sunburst, check labnana_estimate_credits for the live cost",
+          "- gpt-image-2.5-sunburst: detail-oriented, up to 4 reference images; same price as Flare, check labnana_estimate_credits for the live cost",
           "- wan2.7-image-pro: 6/8/12 (4K text-to-image only), up to 9 reference images",
           "- wan2.7-image: 4/6 (no 4K), up to 9 reference images",
           "- seedream-5-0-pro: 6/15 (no 4K), up to 10 reference images; precise editing = put source image in referenceImages and describe the absolute-coordinate region + change in prompt",
           "",
           "Notes:",
           "- Free quota (FREE_USAGE) exists for gemini-3-pro-image at 1K/2K (earned via signup/invite/check-in); free quota is consumed first and costs no credits. 4K always costs credits.",
-          "- imageSize: 1K/2K/4K; aspectRatio: 1:1 2:3 3:2 3:4 4:3 9:16 16:9 21:9 1:4 4:1 1:8 8:1 (Wan2.7 only 1:1 16:9 9:16 4:3 3:4; GPT-Image-2 may omit for auto).",
+          "- imageSize: 1K/2K/4K; GPT-Image-2.5 aspectRatio: 1:1 2:3 3:2 3:4 4:3 4:5 5:4 9:16 16:9 21:9. Other models: 1:1 2:3 3:2 3:4 4:3 9:16 16:9 21:9 1:4 4:1 1:8 8:1 (Wan2.7 subset: 1:1 16:9 9:16 4:3 3:4; GPT-Image-2 may omit for auto).",
           "- Error codes: 21007 invalid key, 26004 insufficient credits, 29003 invalid parameters, 29998 rate limited (retry after 20-30s).",
           "- Generation is synchronous for 1K/2K; 4K or async=true runs as an async task (polled internally, max waitSeconds). If it times out, use labnana_get_task with the returned taskId.",
           "- The API key is configured in Settings > Plugins > Labnana (stored in the credentials domain).",
