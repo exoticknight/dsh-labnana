@@ -6,7 +6,7 @@ import { Button, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
 import officialCardCss from "./official/PluginCard.css";
 import officialFieldsCss from "./official/fields.css";
 import { createCredentials, saveFields, type CredentialState, type SettingsScope } from "./settings.js";
-import { persistVersionNoticeShown, readShownVersion, shouldShowVersionNotice } from "./version-notice.js";
+import { persistVersionNoticeShown, shouldShowVersionNotice } from "./version-notice.js";
 
 //#region css
 const css = [
@@ -81,6 +81,7 @@ const GPT_IMAGE_25_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9
 const ratiosFor = (model: string) => model.startsWith("gpt-image-2.5-") ? GPT_IMAGE_25_RATIOS : RATIOS;
 
 // 官方 locale 字典：ns × { zh, en }
+// Replace the localized release-note copy when preparing each new package version.
 const I18N = {
   zh: {
     title: "Labnana 图片生成",
@@ -353,8 +354,7 @@ function LabnanaSettingsCard(props: CardProps) {
   const [open, setOpen] = useState(false);
   const [versionNoticeOpen, setVersionNoticeOpen] = useState(() => {
     try {
-      const shownVersion = typeof window === "undefined" ? null : readShownVersion(window.localStorage);
-      return shouldShowVersionNotice(__LABNANA_VERSION__, shownVersion);
+      return typeof window === "undefined" || shouldShowVersionNotice(window.localStorage, __LABNANA_VERSION__);
     } catch {
       return true;
     }
@@ -363,7 +363,7 @@ function LabnanaSettingsCard(props: CardProps) {
   const expanded = page || open;
   const autoTestedRef = useRef(false);
 
-  // Record the version as soon as its dialog is shown, so revisiting settings does not reopen it.
+  // Record this release's dialog, so settings revisits do not reopen it; a new release has a new key.
   useEffect(() => {
     if (!versionNoticeOpen) return;
     try { persistVersionNoticeShown(window.localStorage, __LABNANA_VERSION__); } catch { /* best effort when storage is unavailable */ }

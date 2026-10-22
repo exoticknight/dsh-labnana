@@ -1,18 +1,18 @@
-export const VERSION_NOTICE_STORAGE_KEY = "dsh-labnana:version-dialog-shown";
+export const VERSION_NOTICE_STORAGE_KEY_PREFIX = "dsh-labnana:version-dialog-shown:";
 
 export interface VersionNoticeStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
 }
 
-export function shouldShowVersionNotice(currentVersion: string, shownVersion: string | null): boolean {
-  return shownVersion !== currentVersion;
+export function versionNoticeStorageKey(version: string): string {
+  return VERSION_NOTICE_STORAGE_KEY_PREFIX + version;
 }
 
-export function readShownVersion(storage: VersionNoticeStorage): string | null {
-  return storage.getItem(VERSION_NOTICE_STORAGE_KEY);
+export function shouldShowVersionNotice(storage: VersionNoticeStorage, version: string): boolean {
+  return storage.getItem(versionNoticeStorageKey(version)) !== "shown";
 }
 
 export function persistVersionNoticeShown(storage: VersionNoticeStorage, version: string): void {
-  storage.setItem(VERSION_NOTICE_STORAGE_KEY, version);
+  storage.setItem(versionNoticeStorageKey(version), "shown");
 }
