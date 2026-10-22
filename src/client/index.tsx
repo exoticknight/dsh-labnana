@@ -6,7 +6,7 @@ import { Button, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
 import officialCardCss from "./official/PluginCard.css";
 import officialFieldsCss from "./official/fields.css";
 import { createCredentials, saveFields, type CredentialState, type SettingsScope } from "./settings.js";
-import { getVersionNoticeKind, persistVersionNoticeShown, readShownVersion, type VersionNoticeKind } from "./version-notice.js";
+import { persistVersionNoticeShown, readShownVersion, shouldShowVersionNotice } from "./version-notice.js";
 
 //#region css
 const css = [
@@ -140,9 +140,8 @@ const I18N = {
     toolOpenFile: "打开文件",
     toolTaskId: "taskId ",
     version: "v",
-    versionInstalledTitle: "Labnana v",
-    versionInstalledSuffix: " 已就绪",
-    versionUpdatedTitle: "Labnana 已更新到 v",
+    versionNoticeTitle: "Labnana v",
+    versionNoticeTitleSuffix: " 更新内容",
     versionNoticeDescription: "本次更新带来：",
     versionNoteImageTitle: "新增 GPT-Image-2.5",
     versionNoteImageText: "提供 Flare（速度优先）和 Sunburst（细节优先）两种模型，支持 1K / 2K / 4K 输出和最多 4 张参考图。",
@@ -209,9 +208,8 @@ const I18N = {
     toolOpenFile: "Open file",
     toolTaskId: "taskId ",
     version: "v",
-    versionInstalledTitle: "Labnana v",
-    versionInstalledSuffix: " is ready",
-    versionUpdatedTitle: "Labnana updated to v",
+    versionNoticeTitle: "What’s new in Labnana v",
+    versionNoticeTitleSuffix: "",
     versionNoticeDescription: "This release brings:",
     versionNoteImageTitle: "GPT-Image-2.5 models",
     versionNoteImageText: "Choose Flare for speed or Sunburst for detail, with 1K / 2K / 4K output and up to 4 reference images.",
@@ -307,13 +305,11 @@ function LabnanaCard(props: CardProps) {
   return <LabnanaSettingsCard {...props} />;
 }
 
-function VersionNotice({ kind, t, onDismiss }: { kind: VersionNoticeKind | null; t: Translate; onDismiss: () => void }) {
-  const title = kind === "updated"
-    ? t("versionUpdatedTitle") + __LABNANA_VERSION__
-    : t("versionInstalledTitle") + __LABNANA_VERSION__ + t("versionInstalledSuffix");
+function VersionNotice({ open, t, onDismiss }: { open: boolean; t: Translate; onDismiss: () => void }) {
+  const title = t("versionNoticeTitle") + __LABNANA_VERSION__ + t("versionNoticeTitleSuffix");
   return (
     <Modal
-      open={kind !== null}
+      open={open}
       onClose={onDismiss}
       title={title}
       description={t("versionNoticeDescription")}
@@ -355,12 +351,12 @@ function LabnanaSettingsCard(props: CardProps) {
   const [saveToDisk, setSaveToDisk] = useState(false);
   const [outputDir, setOutputDir] = useState("");
   const [open, setOpen] = useState(false);
-  const [versionNotice, setVersionNotice] = useState<VersionNoticeKind | null>(() => {
+  const [versionNoticeOpen, setVersionNoticeOpen] = useState(() => {
     try {
       const shownVersion = typeof window === "undefined" ? null : readShownVersion(window.localStorage);
-      return getVersionNoticeKind(__LABNANA_VERSION__, shownVersion);
+      return shouldShowVersionNotice(__LABNANA_VERSION__, shownVersion);
     } catch {
-      return "installed";
+      return true;
     }
   });
   const page = props.view === "page";
@@ -369,9 +365,9 @@ function LabnanaSettingsCard(props: CardProps) {
 
   // Record the version as soon as its dialog is shown, so revisiting settings does not reopen it.
   useEffect(() => {
-    if (!versionNotice) return;
+    if (!versionNoticeOpen) return;
     try { persistVersionNoticeShown(window.localStorage, __LABNANA_VERSION__); } catch { /* best effort when storage is unavailable */ }
-  }, [versionNotice]);
+  }, [versionNoticeOpen]);
 
   // 订阅官方设置镜像（文档提交/重连时刷新；也覆盖本卡片写入后的回读）
   useEffect(() => describeFace.subscribe(() => setView(describeFace.getSnapshot())), [describeFace]);
@@ -476,7 +472,7 @@ function LabnanaSettingsCard(props: CardProps) {
 
   const mark = () => { setDirty(true); setSaved(false); setSaveError(""); };
   const dismissVersionNotice = () => {
-    setVersionNotice(null);
+    setVersionNoticeOpen(false);
   };
 
   // keyState 来源（test 端点响应）：credentials（凭据域引用）> env（进程环境）
@@ -676,7 +672,7 @@ function LabnanaSettingsCard(props: CardProps) {
         )}
         </div>
       ) : null}
-      <VersionNotice kind={versionNotice} t={t} onDismiss={dismissVersionNotice} />
+      <VersionNotice open={versionNoticeOpen} t={t} onDismiss={dismissVersionNotice} />
     </Root>
   );
 }
