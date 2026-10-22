@@ -9,7 +9,7 @@
 
 DeepSeek Harness (dsh) 插件：在会话里直接生成图片 —— 集成 [Labnana](https://labnana.com) 图片生成 OpenAPI，文生图 / 图生图 / 精准编辑，生成结果直接在对话流显示，可一键保存到当前项目。
 
-支持模型：**NanoBanana Pro（gemini-3-pro-image）、gemini-3.1-flash-image、GPT-Image-2、Wan2.7 Image/Pro、Seedream 5.0 Pro**（积分见[模型与积分](#模型与积分1k--2k--4k)）。
+支持模型：**NanoBanana Pro（gemini-3-pro-image）、gemini-3.1-flash-image、GPT-Image-2、GPT-Image-2.5（Flare 速度优先 / Sunburst 细节优先）、Wan2.7 Image/Pro、Seedream 5.0 Pro**（积分见[模型与积分](#模型与积分1k--2k--4k)）。
 
 ---
 
@@ -41,7 +41,7 @@ dsh plugin --profile web add github:exoticknight/dsh-labnana
 
 > 生成一张 16:9 的电影海报：玻璃材质的未来派耳机漂浮在深色背景中
 
-图片会直接显示在对话流（默认不落盘），点卡片上的「保存到项目」即可写入当前项目 `labnana-images/`。
+生成结果显示在对话内工具卡片（若 DSH 折叠了本轮工具调用，展开「已调用工具」即可查看）；默认不落盘，点卡片上的「保存到项目」即可写入当前项目 `labnana-images/`。
 
 ---
 
@@ -54,7 +54,7 @@ dsh plugin --profile web add github:exoticknight/dsh-labnana
   | `labnana_estimate_credits` | 预估积分（不扣费） |
   | `labnana_get_subscription` | 积分余额 / 免费额度 / 套餐 |
   | `labnana_get_task` | 按 taskId 查询异步任务（4K / 超时兜底） |
-- **对话内图片卡片**：生成结果直接显示（网格 + 点击放大 + 「打开文件」+ 未落盘时「保存到项目」按钮），历史会话回放同样可见
+- **对话内图片卡片**：生成结果显示在工具卡片中（网格 + 点击放大 + 「打开文件」+ 未落盘时「保存到项目」按钮），历史会话回放同样可见
 - **网页设置**：DSH 1.7 RC 在插件详情页直接显示设置表单；旧版保留原插件设置入口。API Key 存在凭据域，支持连接测试与余额查看、默认模型/尺寸/比例/输出目录和「保存图片到磁盘」开关；文案中英跟随系统语言
 - **系统提示注入**：模型知道工具用法、模型-积分表、尺寸/比例/参考图限制、免费额度规则、错误码与重试建议
 
@@ -114,9 +114,13 @@ labnana:
 | gemini-3-pro-image | google | 15 / 15 / 30 | 14 | ✅ |
 | gemini-3.1-flash-image | google | 10 / 10 / 20 | 14 | ✅ |
 | gpt-image-2 | openai | 4 / 6 / 10 | 4 | ✅ |
+| gpt-image-2.5-flare | openai | 实时估算 | 4 | ✅ |
+| gpt-image-2.5-sunburst | openai | 实时估算 | 4 | ✅ |
 | wan2.7-image-pro | alibaba | 6 / 8 / 12 | 9 | 仅文生图 |
 | wan2.7-image | alibaba | 4 / 6 / – | 9 | ❌ |
 | seedream-5-0-pro | bytedance | 6 / 15 / – | 10 | ❌ |
+
+GPT-Image-2.5 的 Flare 与 Sunburst 价格相同，支持 1K / 2K / 4K 和最多 4 张参考图；具体费用随请求变化，请先调用 `labnana_estimate_credits` 实时估算。支持比例：`1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9`；传 `auto` 可省略宽高比。
 
 免费额度：gemini-3-pro-image 的 1K/2K 可通过注册/邀请/签到领取（FREE_USAGE），优先消耗、不扣积分；4K 始终扣积分。
 
@@ -169,7 +173,7 @@ npm run build      # esbuild：
 ### 工具定义（模型视角）
 
 - `labnana_generate_image`：`prompt`（必填）+ `model` / `imageSize` / `aspectRatio` / `referenceImages` / `outputMode` / `saveDir` / `async` / `waitSeconds`；返回 `{ ok, saved, images: [{url, path?, mimeType, size}], model, imageSize, aspectRatio, taskId? }`
-- `labnana_estimate_credits`：`prompt`（必填）+ `model` / `imageSize` / `aspectRatio`；返回 `{ ok, credits, canGenerate, requiresSubscription, warnings? }`
+- `labnana_estimate_credits`：`prompt`（必填）+ `model` / `imageSize` / `aspectRatio` / `referenceImages`；返回 `{ ok, credits, canGenerate, requiresSubscription, warnings? }`
 - `labnana_get_subscription`：无参数；返回余额/免费额度/套餐
 - `labnana_get_task`：`taskId`（必填）；返回任务状态与图片 URL
 

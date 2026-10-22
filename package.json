@@ -2,6 +2,7 @@
   "name": "dsh-labnana",
   "version": "0.3.5",
   "description": "Labnana image generation for DeepSeek Harness: text-to-image / image-to-image / precise editing with credits estimation, subscription balance and web settings UI.",
+  "icon": "images/logo.webp",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -10,6 +11,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "images/logo.webp",
     "src/client/official/LICENSE",
     "lib/index.js",
     "lib/client.js",
