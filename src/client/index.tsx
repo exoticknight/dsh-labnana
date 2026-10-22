@@ -2,11 +2,11 @@
 // 设置卡片（官方 settingsScope + credentials 域 + i18n locale 席位）
 // 对话流内生图结果卡片（官方 tool.call.toolview keyed 槽）
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
 import officialCardCss from "./official/PluginCard.css";
 import officialFieldsCss from "./official/fields.css";
 import { createCredentials, saveFields, type CredentialState, type SettingsScope } from "./settings.js";
-import { getVersionNoticeKind, persistVersionNoticeDismissal, readDismissedVersion, type VersionNoticeKind } from "./version-notice.js";
+import { getVersionNoticeKind, persistVersionNoticeShown, readShownVersion, type VersionNoticeKind } from "./version-notice.js";
 
 //#region css
 const css = [
@@ -28,11 +28,10 @@ const css = [
   ".dshln-pageForm .dshln-input:not([type=checkbox]){box-sizing:border-box;min-width:0;width:100%}",
   ".dshln-pageBody{padding-bottom:8px}",
   ".dshln-pageBody .dshln-footer{justify-content:flex-start}",
-  ".dshln-versionNotice{position:relative;margin:0 0 14px;padding:12px 38px 12px 14px;border:1px solid var(--dsw-alias-border-l2);border-left:3px solid var(--dsw-alias-state-business-primary);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}",
-  ".dshln-versionNoticeTitle{margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:1.5}",
-  ".dshln-versionNoticeText{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5}",
-  ".dshln-versionNoticeLink{display:inline-block;margin-top:5px;color:var(--dsw-alias-state-business-primary);font-size:12px;line-height:1.5}",
-  ".dshln-versionNoticeClose{position:absolute;top:6px;right:7px;width:28px;height:28px;padding:0;color:var(--dsw-alias-label-secondary);font-size:18px;line-height:1}",
+  ".dshln-versionNotes{display:grid;gap:16px;margin:0;padding:0;list-style:none}",
+  ".dshln-versionNoteTitle{margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:1.5}",
+  ".dshln-versionNoteText{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}",
+  ".dshln-versionNotesLink{display:inline-block;margin-top:18px;color:var(--dsw-alias-state-business-primary);font-size:12px;line-height:1.5}",
   ".dshln-tool{padding:2px 0}",
   ".dshln-toolHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}",
   ".dshln-toolTitle{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500}",
@@ -144,9 +143,13 @@ const I18N = {
     versionInstalledTitle: "Labnana v",
     versionInstalledSuffix: " 已就绪",
     versionUpdatedTitle: "Labnana 已更新到 v",
-    versionNoticeText: "查看本版本更新内容，了解功能与修复。",
-    versionNoticeLink: "查看更新日志",
-    versionNoticeDismiss: "关闭版本提示",
+    versionNoticeDescription: "本次更新带来：",
+    versionNoteImageTitle: "新增 GPT-Image-2.5",
+    versionNoteImageText: "提供 Flare（速度优先）和 Sunburst（细节优先）两种模型，支持 1K / 2K / 4K 输出和最多 4 张参考图。",
+    versionNoteBrandTitle: "Labnana 品牌标识",
+    versionNoteBrandText: "Labnana 图标现在会显示在 DSH 插件列表和插件详情中。",
+    versionNoticeLink: "查看完整更新日志",
+    versionNoticeDismiss: "知道了",
   },
   en: {
     title: "Labnana image generation",
@@ -209,9 +212,13 @@ const I18N = {
     versionInstalledTitle: "Labnana v",
     versionInstalledSuffix: " is ready",
     versionUpdatedTitle: "Labnana updated to v",
-    versionNoticeText: "See what changed in this release.",
-    versionNoticeLink: "Release notes",
-    versionNoticeDismiss: "Dismiss version notice",
+    versionNoticeDescription: "This release brings:",
+    versionNoteImageTitle: "GPT-Image-2.5 models",
+    versionNoteImageText: "Choose Flare for speed or Sunburst for detail, with 1K / 2K / 4K output and up to 4 reference images.",
+    versionNoteBrandTitle: "Labnana branding",
+    versionNoteBrandText: "The Labnana icon now appears in the DSH plugin list and plugin details.",
+    versionNoticeLink: "Full release notes",
+    versionNoticeDismiss: "Got it",
   },
 };
 
@@ -300,19 +307,33 @@ function LabnanaCard(props: CardProps) {
   return <LabnanaSettingsCard {...props} />;
 }
 
-function VersionNotice({ kind, t, onDismiss }: { kind: VersionNoticeKind; t: Translate; onDismiss: () => void }) {
+function VersionNotice({ kind, t, onDismiss }: { kind: VersionNoticeKind | null; t: Translate; onDismiss: () => void }) {
   const title = kind === "updated"
     ? t("versionUpdatedTitle") + __LABNANA_VERSION__
     : t("versionInstalledTitle") + __LABNANA_VERSION__ + t("versionInstalledSuffix");
   return (
-    <div className="dshln-versionNotice" role="status" aria-live="polite">
-      <Button className="dshln-versionNoticeClose" variant="ghost" size="sm" type="button" aria-label={t("versionNoticeDismiss")} onClick={onDismiss}>×</Button>
-      <p className="dshln-versionNoticeTitle">{title}</p>
-      <p className="dshln-versionNoticeText">{t("versionNoticeText")}</p>
-      <a className="dshln-versionNoticeLink" href="https://github.com/exoticknight/dsh-labnana/releases" target="_blank" rel="noopener noreferrer">
+    <Modal
+      open={kind !== null}
+      onClose={onDismiss}
+      title={title}
+      description={t("versionNoticeDescription")}
+      closeLabel={t("versionNoticeDismiss")}
+      footer={<Button variant="primary" size="sm" type="button" data-modal-autofocus onClick={onDismiss}>{t("versionNoticeDismiss")}</Button>}
+    >
+      <ul className="dshln-versionNotes">
+        <li>
+          <p className="dshln-versionNoteTitle">{t("versionNoteImageTitle")}</p>
+          <p className="dshln-versionNoteText">{t("versionNoteImageText")}</p>
+        </li>
+        <li>
+          <p className="dshln-versionNoteTitle">{t("versionNoteBrandTitle")}</p>
+          <p className="dshln-versionNoteText">{t("versionNoteBrandText")}</p>
+        </li>
+      </ul>
+      <a className="dshln-versionNotesLink" href="https://github.com/exoticknight/dsh-labnana/releases" target="_blank" rel="noopener noreferrer">
         {t("versionNoticeLink")}
       </a>
-    </div>
+    </Modal>
   );
 }
 
@@ -336,8 +357,8 @@ function LabnanaSettingsCard(props: CardProps) {
   const [open, setOpen] = useState(false);
   const [versionNotice, setVersionNotice] = useState<VersionNoticeKind | null>(() => {
     try {
-      const dismissedVersion = typeof window === "undefined" ? null : readDismissedVersion(window.localStorage);
-      return getVersionNoticeKind(__LABNANA_VERSION__, dismissedVersion);
+      const shownVersion = typeof window === "undefined" ? null : readShownVersion(window.localStorage);
+      return getVersionNoticeKind(__LABNANA_VERSION__, shownVersion);
     } catch {
       return "installed";
     }
@@ -345,6 +366,12 @@ function LabnanaSettingsCard(props: CardProps) {
   const page = props.view === "page";
   const expanded = page || open;
   const autoTestedRef = useRef(false);
+
+  // Record the version as soon as its dialog is shown, so revisiting settings does not reopen it.
+  useEffect(() => {
+    if (!versionNotice) return;
+    try { persistVersionNoticeShown(window.localStorage, __LABNANA_VERSION__); } catch { /* best effort when storage is unavailable */ }
+  }, [versionNotice]);
 
   // 订阅官方设置镜像（文档提交/重连时刷新；也覆盖本卡片写入后的回读）
   useEffect(() => describeFace.subscribe(() => setView(describeFace.getSnapshot())), [describeFace]);
@@ -450,7 +477,6 @@ function LabnanaSettingsCard(props: CardProps) {
   const mark = () => { setDirty(true); setSaved(false); setSaveError(""); };
   const dismissVersionNotice = () => {
     setVersionNotice(null);
-    try { persistVersionNoticeDismissal(window.localStorage, __LABNANA_VERSION__); } catch { /* best effort when storage is unavailable */ }
   };
 
   // keyState 来源（test 端点响应）：credentials（凭据域引用）> env（进程环境）
@@ -504,7 +530,6 @@ function LabnanaSettingsCard(props: CardProps) {
       ) : null}
       {expanded ? (
         <div className={page ? "dshln-pageBody" : "dshln-body"}>
-          {versionNotice ? <VersionNotice kind={versionNotice} t={t} onDismiss={dismissVersionNotice} /> : null}
           {loading ? (
           <p className="dshln-hint">{t("loading")}</p>
         ) : unavailable ? (
@@ -651,6 +676,7 @@ function LabnanaSettingsCard(props: CardProps) {
         )}
         </div>
       ) : null}
+      <VersionNotice kind={versionNotice} t={t} onDismiss={dismissVersionNotice} />
     </Root>
   );
 }
