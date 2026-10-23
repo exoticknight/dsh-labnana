@@ -3,11 +3,15 @@ import { build } from "esbuild";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readCurrentReleaseNotice } from "./release-notes.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const lib = path.join(root, "lib");
 const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
-const define = { __LABNANA_VERSION__: JSON.stringify(version) };
+const define = {
+  __LABNANA_VERSION__: JSON.stringify(version),
+  __LABNANA_RELEASE_NOTICE_JSON__: JSON.stringify(JSON.stringify(readCurrentReleaseNotice(root))),
+};
 
 // host 端：Node ESM，运行时依赖全部 external（走安装树唯一实例）
 await build({

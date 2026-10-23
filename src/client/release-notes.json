@@ -1,0 +1,10 @@
+{
+  "0.3.6": {
+    "id": "0.3.6",
+    "version": "0.3.6",
+    "highlights": {
+      "zh": [{ "kind": "fixed", "title": "修复已知问题" }],
+      "en": [{ "kind": "fixed", "title": "Fixed known issues." }]
+    }
+  }
+}
