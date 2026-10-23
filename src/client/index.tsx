@@ -1,11 +1,12 @@
 // dsh-labnana — Client 端（TypeScript/JSX）
 // 设置卡片（官方 settingsScope + credentials 域 + i18n locale 席位）
 // 对话流内生图结果卡片（官方 tool.call.toolview keyed 槽）
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Button, Modal, modalSelector } from "@deepseek-ai/dsh-client-ui-primitives";
 import officialCardCss from "./official/PluginCard.css";
 import officialFieldsCss from "./official/fields.css";
 import { createCredentials, saveFields, type CredentialState, type SettingsScope } from "./settings.js";
+import { persistVersionNoticeShown, shouldShowVersionNotice, type VersionNoticeStorage } from "./version-notice.js";
 
 //#region css
 const css = [
@@ -27,6 +28,13 @@ const css = [
   ".dshln-pageForm .dshln-input:not([type=checkbox]){box-sizing:border-box;min-width:0;width:100%}",
   ".dshln-pageBody{padding-bottom:8px}",
   ".dshln-pageBody .dshln-footer{justify-content:flex-start}",
+  ".dshln-versionNotes{display:grid;gap:16px;margin:0;padding:0;list-style:none}",
+  ".dshln-versionNoticeModal{width:min(520px,100%);max-height:calc(100dvh - 96px)}",
+  ".dshln-versionNoticeContent{min-height:0}",
+  "@media(max-width:480px){.dshln-versionNoticeModal{width:100%;max-height:calc(100dvh - 48px)}}",
+  ".dshln-versionNoteTitle{margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:1.5}",
+  ".dshln-versionNoteText{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}",
+  ".dshln-versionNotesLink{display:inline-block;margin-top:18px;color:var(--dsw-alias-state-business-primary);font-size:12px;line-height:1.5}",
   ".dshln-tool{padding:2px 0}",
   ".dshln-toolHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}",
   ".dshln-toolTitle{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500}",
@@ -76,6 +84,7 @@ const GPT_IMAGE_25_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9
 const ratiosFor = (model: string) => model.startsWith("gpt-image-2.5-") ? GPT_IMAGE_25_RATIOS : RATIOS;
 
 // 官方 locale 字典：ns × { zh, en }
+// Replace the localized release-note copy when preparing each new package version.
 const I18N = {
   zh: {
     title: "Labnana 图片生成",
@@ -135,6 +144,15 @@ const I18N = {
     toolOpenFile: "打开文件",
     toolTaskId: "taskId ",
     version: "v",
+    versionNoticeTitle: "Labnana v",
+    versionNoticeTitleSuffix: " 更新内容",
+    versionNoticeDescription: "本次更新带来：",
+    versionNoteImageTitle: "新增 GPT-Image-2.5",
+    versionNoteImageText: "提供 Flare（速度优先）和 Sunburst（细节优先）两种模型，支持 1K / 2K / 4K 输出和最多 4 张参考图。",
+    versionNoteBrandTitle: "Labnana 品牌标识",
+    versionNoteBrandText: "Labnana 图标现在会显示在 DSH 插件列表和插件详情中。",
+    versionNoticeLink: "查看完整更新日志",
+    versionNoticeDismiss: "知道了",
   },
   en: {
     title: "Labnana image generation",
@@ -194,6 +212,15 @@ const I18N = {
     toolOpenFile: "Open file",
     toolTaskId: "taskId ",
     version: "v",
+    versionNoticeTitle: "What’s new in Labnana v",
+    versionNoticeTitleSuffix: "",
+    versionNoticeDescription: "This release brings:",
+    versionNoteImageTitle: "GPT-Image-2.5 models",
+    versionNoteImageText: "Choose Flare for speed or Sunburst for detail, with 1K / 2K / 4K output and up to 4 reference images.",
+    versionNoteBrandTitle: "Labnana branding",
+    versionNoteBrandText: "The Labnana icon now appears in the DSH plugin list and plugin details.",
+    versionNoticeLink: "Full release notes",
+    versionNoticeDismiss: "Got it",
   },
 };
 
@@ -280,6 +307,104 @@ function rowOf(viewSnapshot: DescribeSnapshot, namespace: string): NamespaceRow 
 function LabnanaCard(props: CardProps) {
   if (props.view === "summary") return <>{props.t("description")}</>;
   return <LabnanaSettingsCard {...props} />;
+}
+
+function VersionNotice({ open, t, onDismiss }: { open: boolean; t: Translate; onDismiss: () => void }) {
+  const title = t("versionNoticeTitle") + __LABNANA_VERSION__ + t("versionNoticeTitleSuffix");
+  return (
+    <Modal
+      open={open}
+      onClose={onDismiss}
+      title={title}
+      description={t("versionNoticeDescription")}
+      closeLabel={t("versionNoticeDismiss")}
+      className="dshln-versionNoticeModal"
+      contentClassName="dshln-versionNoticeContent"
+      footer={<Button variant="primary" size="sm" type="button" data-modal-autofocus onClick={onDismiss}>{t("versionNoticeDismiss")}</Button>}
+    >
+      <div style={{ maxHeight: "min(420px, calc(100dvh - 260px))", overflowY: "auto", overscrollBehavior: "contain" }}>
+        <ul className="dshln-versionNotes">
+          <li>
+            <p className="dshln-versionNoteTitle">{t("versionNoteImageTitle")}</p>
+            <p className="dshln-versionNoteText">{t("versionNoteImageText")}</p>
+          </li>
+          <li>
+            <p className="dshln-versionNoteTitle">{t("versionNoteBrandTitle")}</p>
+            <p className="dshln-versionNoteText">{t("versionNoteBrandText")}</p>
+          </li>
+        </ul>
+        <a className="dshln-versionNotesLink" href="https://github.com/exoticknight/dsh-labnana/releases" target="_blank" rel="noopener noreferrer">
+          {t("versionNoticeLink")}
+        </a>
+      </div>
+    </Modal>
+  );
+}
+
+function readVersionNoticeStorage(): VersionNoticeStorage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function VersionNoticeOverlay({ t }: { t: Translate }) {
+  const [open, setOpen] = useState(false);
+  const storage = useRef<VersionNoticeStorage | undefined>(undefined);
+
+  useEffect(() => {
+    storage.current = readVersionNoticeStorage();
+    try {
+      if (storage.current && !shouldShowVersionNotice(storage.current, __LABNANA_VERSION__)) return;
+    } catch {
+      // Storage can be readable but unwritable in privacy-restricted contexts; show this session's notice.
+    }
+
+    const body = document.body;
+    if (!body) return;
+    let timer: number | undefined;
+    const canPresent = () => document.visibilityState === "visible" && document.querySelector(modalSelector) === null;
+    const schedule = () => {
+      if (!canPresent()) {
+        if (timer !== undefined) window.clearTimeout(timer);
+        timer = undefined;
+        return;
+      }
+      if (timer !== undefined) return;
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        if (canPresent()) setOpen(true);
+      }, 500);
+    };
+    const observer = new MutationObserver(schedule);
+    observer.observe(body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["role", "aria-modal"],
+    });
+    document.addEventListener("visibilitychange", schedule);
+    schedule();
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", schedule);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open || document.visibilityState !== "visible") return;
+    const dialog = document.querySelector(".dshln-versionNoticeModal[role=\"dialog\"][aria-modal=\"true\"]");
+    if (!dialog || !storage.current) return;
+    try {
+      persistVersionNoticeShown(storage.current, __LABNANA_VERSION__);
+    } catch {
+      // The notice has still been shown; a later launch can retry if storage is unavailable.
+    }
+  }, [open]);
+
+  return <VersionNotice open={open} t={t} onDismiss={() => setOpen(false)} />;
 }
 
 function LabnanaSettingsCard(props: CardProps) {
@@ -738,6 +863,13 @@ const inject = ["slots", "remote", "remote.credentials", "locale"];
 function apply(ctx: any) {
   // 官方 locale：注册字典（ns × {zh, en}），slot 组件经框架注入的标准 t 席位取翻译
   ctx.effect(() => ctx.locale.register("labnana", { zh: I18N.zh, en: I18N.en }), "dsh-labnana: locale dictionary");
+  ctx.effect(
+    () => ctx.slots.inject("shell.overlay", () => ctx.slots.register(
+      { name: "shell.overlay", id: "dsh-labnana.version-notice", locale: NS },
+      (props: { t: Translate }) => <VersionNoticeOverlay t={props.t} />,
+    )),
+    "dsh-labnana: startup version notice",
+  );
   // dsh 0.1.7-rc switched from settingsScope to per-entry configForms.
   // Use Cordis get() for optional services so a missing legacy or RC API does
   // not leave the client plugin waiting on an injection that can never resolve.
