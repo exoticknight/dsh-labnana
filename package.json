@@ -1,6 +1,6 @@
 {
   "name": "dsh-labnana",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Labnana image generation for DeepSeek Harness: text-to-image / image-to-image / precise editing with credits estimation, subscription balance and web settings UI.",
   "icon": "images/logo.webp",
   "type": "module",
@@ -20,7 +20,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check": "npm run typecheck && npm run build && node scripts/check-settings.mjs && node scripts/check-connection.mjs && node scripts/check-client-settings.mjs && node scripts/check-version-notice.mjs"
+    "check": "npm run typecheck && npm run build && node scripts/check-settings.mjs && node scripts/check-connection.mjs && node scripts/check-client-settings.mjs && node scripts/check-version-notice.mjs && node scripts/check-release-notes.mjs"
   },
   "keywords": [
     "deepseek-harness",

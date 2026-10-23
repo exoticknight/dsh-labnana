@@ -5,8 +5,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { Button, Modal, modalSelector } from "@deepseek-ai/dsh-client-ui-primitives";
 import officialCardCss from "./official/PluginCard.css";
 import officialFieldsCss from "./official/fields.css";
+import { RELEASE_NOTICE, groupReleaseNoticeHighlights, type ReleaseNoticeKind } from "./release-notes.js";
 import { createCredentials, saveFields, type CredentialState, type SettingsScope } from "./settings.js";
-import { persistVersionNoticeShown, shouldShowVersionNotice, type VersionNoticeStorage } from "./version-notice.js";
+import { startVersionNotice, type VersionNoticeMountResult, type VersionNoticeStorage } from "./version-notice.js";
 
 //#region css
 const css = [
@@ -84,7 +85,7 @@ const GPT_IMAGE_25_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9
 const ratiosFor = (model: string) => model.startsWith("gpt-image-2.5-") ? GPT_IMAGE_25_RATIOS : RATIOS;
 
 // 官方 locale 字典：ns × { zh, en }
-// Replace the localized release-note copy when preparing each new package version.
+// Update release-notes.json for each release; locale chrome and the grouped template stay fixed.
 const I18N = {
   zh: {
     title: "Labnana 图片生成",
@@ -147,10 +148,11 @@ const I18N = {
     versionNoticeTitle: "Labnana v",
     versionNoticeTitleSuffix: " 更新内容",
     versionNoticeDescription: "本次更新带来：",
-    versionNoteImageTitle: "新增 GPT-Image-2.5",
-    versionNoteImageText: "提供 Flare（速度优先）和 Sunburst（细节优先）两种模型，支持 1K / 2K / 4K 输出和最多 4 张参考图。",
-    versionNoteBrandTitle: "Labnana 品牌标识",
-    versionNoteBrandText: "Labnana 图标现在会显示在 DSH 插件列表和插件详情中。",
+    versionNoticeLanguage: "zh",
+    versionNoticeMigration: "迁移说明",
+    versionNoticeAdded: "新增",
+    versionNoticeImproved: "改进",
+    versionNoticeFixed: "修复",
     versionNoticeLink: "查看完整更新日志",
     versionNoticeDismiss: "知道了",
   },
@@ -215,10 +217,11 @@ const I18N = {
     versionNoticeTitle: "What’s new in Labnana v",
     versionNoticeTitleSuffix: "",
     versionNoticeDescription: "This release brings:",
-    versionNoteImageTitle: "GPT-Image-2.5 models",
-    versionNoteImageText: "Choose Flare for speed or Sunburst for detail, with 1K / 2K / 4K output and up to 4 reference images.",
-    versionNoteBrandTitle: "Labnana branding",
-    versionNoteBrandText: "The Labnana icon now appears in the DSH plugin list and plugin details.",
+    versionNoticeLanguage: "en",
+    versionNoticeMigration: "Migration notes",
+    versionNoticeAdded: "Added",
+    versionNoticeImproved: "Improved",
+    versionNoticeFixed: "Fixed",
     versionNoticeLink: "Full release notes",
     versionNoticeDismiss: "Got it",
   },
@@ -309,8 +312,25 @@ function LabnanaCard(props: CardProps) {
   return <LabnanaSettingsCard {...props} />;
 }
 
-function VersionNotice({ open, t, onDismiss }: { open: boolean; t: Translate; onDismiss: () => void }) {
-  const title = t("versionNoticeTitle") + __LABNANA_VERSION__ + t("versionNoticeTitleSuffix");
+function VersionNotice({ open, t, onDismiss, onMounted }: {
+  open: boolean;
+  t: Translate;
+  onDismiss: () => void;
+  onMounted?: (result: VersionNoticeMountResult) => void;
+}) {
+  useLayoutEffect(() => {
+    if (!open || !onMounted) return;
+    const dialog = document.querySelector(".dshln-versionNoticeModal[role=\"dialog\"][aria-modal=\"true\"]");
+    onMounted(document.visibilityState === "visible" ? dialog !== null : "slot-lost");
+  }, [open, onMounted]);
+  const highlights = RELEASE_NOTICE.highlights[t("versionNoticeLanguage") === "zh" ? "zh" : "en"];
+  const groupLabels: Record<ReleaseNoticeKind, string> = {
+    migration: "versionNoticeMigration",
+    added: "versionNoticeAdded",
+    improved: "versionNoticeImproved",
+    fixed: "versionNoticeFixed",
+  };
+  const title = t("versionNoticeTitle") + RELEASE_NOTICE.version + t("versionNoticeTitleSuffix");
   return (
     <Modal
       open={open}
@@ -323,16 +343,19 @@ function VersionNotice({ open, t, onDismiss }: { open: boolean; t: Translate; on
       footer={<Button variant="primary" size="sm" type="button" data-modal-autofocus onClick={onDismiss}>{t("versionNoticeDismiss")}</Button>}
     >
       <div style={{ maxHeight: "min(420px, calc(100dvh - 260px))", overflowY: "auto", overscrollBehavior: "contain" }}>
-        <ul className="dshln-versionNotes">
-          <li>
-            <p className="dshln-versionNoteTitle">{t("versionNoteImageTitle")}</p>
-            <p className="dshln-versionNoteText">{t("versionNoteImageText")}</p>
-          </li>
-          <li>
-            <p className="dshln-versionNoteTitle">{t("versionNoteBrandTitle")}</p>
-            <p className="dshln-versionNoteText">{t("versionNoteBrandText")}</p>
-          </li>
-        </ul>
+        {groupReleaseNoticeHighlights(highlights).map(({ kind, highlights: items }) => (
+          <section key={kind} style={{ display: "grid", gap: 8, marginBottom: 18 }}>
+            <h3 style={{ margin: 0, color: "var(--dsw-alias-label-secondary)", fontSize: 12, lineHeight: "18px", fontWeight: 600 }}>{t(groupLabels[kind])}</h3>
+            <ul className="dshln-versionNotes">
+              {items.map((item, index) => (
+                <li key={`${kind}-${index}`}>
+                  <p className="dshln-versionNoteTitle">{item.title}</p>
+                  {item.description === undefined ? null : <p className="dshln-versionNoteText">{item.description}</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
         <a className="dshln-versionNotesLink" href="https://github.com/exoticknight/dsh-labnana/releases" target="_blank" rel="noopener noreferrer">
           {t("versionNoticeLink")}
         </a>
@@ -350,61 +373,71 @@ function readVersionNoticeStorage(): VersionNoticeStorage | undefined {
 }
 
 function VersionNoticeOverlay({ t }: { t: Translate }) {
-  const [open, setOpen] = useState(false);
-  const storage = useRef<VersionNoticeStorage | undefined>(undefined);
+  type Presentation = { mounted: (result: VersionNoticeMountResult) => void };
+  const [active, setActive] = useState<Presentation | null>(null);
+  const activeRef = useRef<Presentation | null>(null);
 
   useEffect(() => {
-    storage.current = readVersionNoticeStorage();
-    try {
-      if (storage.current && !shouldShowVersionNotice(storage.current, __LABNANA_VERSION__)) return;
-    } catch {
-      // Storage can be readable but unwritable in privacy-restricted contexts; show this session's notice.
-    }
-
     const body = document.body;
     if (!body) return;
-    let timer: number | undefined;
-    const canPresent = () => document.visibilityState === "visible" && document.querySelector(modalSelector) === null;
-    const schedule = () => {
-      if (!canPresent()) {
-        if (timer !== undefined) window.clearTimeout(timer);
-        timer = undefined;
-        return;
-      }
-      if (timer !== undefined) return;
-      timer = window.setTimeout(() => {
-        timer = undefined;
-        if (canPresent()) setOpen(true);
-      }, 500);
-    };
-    const observer = new MutationObserver(schedule);
-    observer.observe(body, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ["role", "aria-modal"],
+    let disposed = false;
+    let locks: Pick<LockManager, "request"> | undefined;
+    try { locks = navigator.locks; } catch { /* The controller retains same-page coordination. */ }
+    const dispose = startVersionNotice({
+      version: __LABNANA_VERSION__,
+      storage: readVersionNoticeStorage(),
+      locks,
+      environment: {
+        canPresent: () => document.visibilityState === "visible" && document.querySelector(modalSelector) === null,
+        watch: listener => {
+          const observer = new MutationObserver(listener);
+          observer.observe(body, { subtree: true, childList: true, attributes: true, attributeFilter: ["role", "aria-modal"] });
+          document.addEventListener("visibilitychange", listener);
+          return () => {
+            observer.disconnect();
+            document.removeEventListener("visibilitychange", listener);
+          };
+        },
+        later: (callback, milliseconds) => {
+          const timer = window.setTimeout(callback, milliseconds);
+          return () => window.clearTimeout(timer);
+        },
+      },
+      present: signal => new Promise<VersionNoticeMountResult>(resolve => {
+        let settled = false;
+        const finish = (result: VersionNoticeMountResult) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          signal.removeEventListener("abort", onAbort);
+          if (result !== true && activeRef.current === next) {
+            activeRef.current = null;
+            if (!disposed) setActive(null);
+          }
+          resolve(result);
+        };
+        const onAbort = () => finish(false);
+        const timeout = window.setTimeout(() => finish(false), 10_000);
+        const next = { mounted: finish };
+        signal.addEventListener("abort", onAbort, { once: true });
+        activeRef.current = next;
+        setActive(next);
+      }),
+      onError: error => console.warn("[dsh-labnana] Startup version notice could not complete:", error),
     });
-    document.addEventListener("visibilitychange", schedule);
-    schedule();
     return () => {
-      if (timer !== undefined) window.clearTimeout(timer);
-      observer.disconnect();
-      document.removeEventListener("visibilitychange", schedule);
+      disposed = true;
+      dispose();
+      activeRef.current?.mounted(false);
+      activeRef.current = null;
     };
   }, []);
 
-  useLayoutEffect(() => {
-    if (!open || document.visibilityState !== "visible") return;
-    const dialog = document.querySelector(".dshln-versionNoticeModal[role=\"dialog\"][aria-modal=\"true\"]");
-    if (!dialog || !storage.current) return;
-    try {
-      persistVersionNoticeShown(storage.current, __LABNANA_VERSION__);
-    } catch {
-      // The notice has still been shown; a later launch can retry if storage is unavailable.
-    }
-  }, [open]);
-
-  return <VersionNotice open={open} t={t} onDismiss={() => setOpen(false)} />;
+  return <VersionNotice open={active !== null} t={t} onMounted={active?.mounted} onDismiss={() => {
+    activeRef.current?.mounted(false);
+    activeRef.current = null;
+    setActive(null);
+  }} />;
 }
 
 function LabnanaSettingsCard(props: CardProps) {
